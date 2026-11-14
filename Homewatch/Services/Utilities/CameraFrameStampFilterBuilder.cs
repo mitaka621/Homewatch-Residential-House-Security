@@ -1,6 +1,5 @@
 using Homewatch.Contracts.Dtos.CameraFrameDtos;
 using Homewatch.Contracts.Enums;
-using SixLabors.ImageSharp.Processing;
 using System.Globalization;
 using System.Text;
 

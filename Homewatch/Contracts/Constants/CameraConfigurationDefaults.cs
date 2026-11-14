@@ -16,7 +16,7 @@ namespace Homewatch.Contracts.Constants
 
         public const float Contrast = 1;
 
-        public const SixLabors.ImageSharp.Processing.FlipMode FlipMode = SixLabors.ImageSharp.Processing.FlipMode.None;
+        public const FlipMode FlipMode = FlipMode.None;
 
         public const CameraAspectRatios CameraAspectRatio = CameraAspectRatios.Original;
 

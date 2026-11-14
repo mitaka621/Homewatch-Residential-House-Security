@@ -1,6 +1,5 @@
 ﻿using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
-using SixLabors.ImageSharp.Processing;
 
 namespace Homewatch.Contracts.Dtos.CameraConfigurationDtos
 {

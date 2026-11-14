@@ -7,7 +7,6 @@ using Homewatch.Infrastructure.Data;
 using Homewatch.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using SixLabors.ImageSharp;
 
 namespace Homewatch.Infrastructure.Repositories
 {

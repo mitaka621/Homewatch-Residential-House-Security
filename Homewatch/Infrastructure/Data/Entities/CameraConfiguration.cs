@@ -1,6 +1,5 @@
 ﻿using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
-using SixLabors.ImageSharp.Processing;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

@@ -1,7 +1,6 @@
 using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 using MudBlazor;
-using SixLabors.ImageSharp.Processing;
 using System.ComponentModel.DataAnnotations;
 
 namespace Homewatch.Contracts.Models

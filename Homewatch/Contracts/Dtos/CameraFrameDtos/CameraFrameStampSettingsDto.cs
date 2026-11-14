@@ -1,5 +1,4 @@
 using Homewatch.Contracts.Enums;
-using SixLabors.ImageSharp.Processing;
 
 namespace Homewatch.Contracts.Dtos.CameraFrameDtos
 {

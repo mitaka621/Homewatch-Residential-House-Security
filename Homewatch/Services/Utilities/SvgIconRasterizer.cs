@@ -1,10 +1,5 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 using System.Globalization;
-using System.Numerics;
 using System.Xml.Linq;
 
 namespace Homewatch.Core.Utilities
@@ -21,35 +16,45 @@ namespace Homewatch.Core.Utilities
             var offsetX = (sizeInPixels - viewBox.Width * scale) / 2f;
             var offsetY = (sizeInPixels - viewBox.Height * scale) / 2f;
 
-            var transform = Matrix4x4.CreateTranslation(-viewBox.X, -viewBox.Y, 0)
-                * Matrix4x4.CreateScale(scale, scale, 1)
-                * Matrix4x4.CreateTranslation(offsetX, offsetY, 0);
+            var color = SKColor.Parse(colorHex);
+            var shapes = new List<(SKPath Path, float Opacity)>();
 
-            var color = Color.ParseHex(colorHex);
-            var shapes = new List<(IPath Path, float Opacity, IntersectionRule Rule)>();
-
-            CollectShapes(root, 1f, IntersectionRule.NonZero, shapes);
-
-            using var image = new Image<Rgba32>(sizeInPixels, sizeInPixels);
-
-            foreach (var shape in shapes)
+            try
             {
-                var drawingOptions = new DrawingOptions
+                CollectShapes(root, 1f, SKPathFillType.Winding, shapes);
+
+                using var surface = SKSurface.Create(new SKImageInfo(sizeInPixels, sizeInPixels, SKColorType.Rgba8888, SKAlphaType.Premul));
+                using var paint = new SKPaint
                 {
-                    IntersectionRule = shape.Rule
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
                 };
 
-                var brush = Brushes.Solid(color.WithAlpha(shape.Opacity));
-                var path = shape.Path.Transform(transform);
+                var canvas = surface.Canvas;
 
-                image.Mutate(context => context.Paint(drawingOptions, canvas => canvas.Fill(brush, path)));
+                canvas.Clear(SKColors.Transparent);
+                canvas.Translate(offsetX, offsetY);
+                canvas.Scale(scale);
+                canvas.Translate(-viewBox.Left, -viewBox.Top);
+
+                foreach (var shape in shapes)
+                {
+                    paint.Color = color.WithAlpha((byte)Math.Round(shape.Opacity * byte.MaxValue));
+                    canvas.DrawPath(shape.Path, paint);
+                }
+
+                using var image = surface.Snapshot();
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+
+                return data.ToArray();
             }
-
-            using var stream = new MemoryStream();
-
-            image.SaveAsPng(stream);
-
-            return stream.ToArray();
+            finally
+            {
+                foreach (var shape in shapes)
+                {
+                    shape.Path.Dispose();
+                }
+            }
         }
 
         private static XElement ParseRoot(string svgMarkup)
@@ -64,26 +69,26 @@ namespace Homewatch.Core.Utilities
             return XElement.Parse(markup);
         }
 
-        private static RectangleF ReadViewBox(XElement root)
+        private static SKRect ReadViewBox(XElement root)
         {
             var viewBoxValues = SplitNumbers(root.Attribute("viewBox")?.Value);
 
             if (viewBoxValues.Count == 4 && viewBoxValues[2] > 0 && viewBoxValues[3] > 0)
             {
-                return new RectangleF(viewBoxValues[0], viewBoxValues[1], viewBoxValues[2], viewBoxValues[3]);
+                return SKRect.Create(viewBoxValues[0], viewBoxValues[1], viewBoxValues[2], viewBoxValues[3]);
             }
 
             var width = ReadNumber(root, "width", _defaultViewBoxSize);
             var height = ReadNumber(root, "height", _defaultViewBoxSize);
 
-            return new RectangleF(0, 0, width, height);
+            return SKRect.Create(0, 0, width, height);
         }
 
         private static void CollectShapes(
             XElement parent,
             float inheritedOpacity,
-            IntersectionRule inheritedRule,
-            List<(IPath Path, float Opacity, IntersectionRule Rule)> shapes)
+            SKPathFillType inheritedFillType,
+            List<(SKPath Path, float Opacity)> shapes)
         {
             foreach (var element in parent.Elements())
             {
@@ -96,11 +101,11 @@ namespace Homewatch.Core.Utilities
                     * ReadNumber(element, "opacity", 1f)
                     * ReadNumber(element, "fill-opacity", 1f);
 
-                var rule = ReadIntersectionRule(element, inheritedRule);
+                var fillType = ReadFillType(element, inheritedFillType);
 
                 if (element.Name.LocalName == "g")
                 {
-                    CollectShapes(element, opacity, rule, shapes);
+                    CollectShapes(element, opacity, fillType, shapes);
                     continue;
                 }
 
@@ -108,19 +113,18 @@ namespace Homewatch.Core.Utilities
 
                 if (path != null)
                 {
-                    shapes.Add((path, Math.Clamp(opacity, 0f, 1f), rule));
+                    path.FillType = fillType;
+                    shapes.Add((path, Math.Clamp(opacity, 0f, 1f)));
                 }
             }
         }
 
-        private static IPath? CreatePath(XElement element)
+        private static SKPath? CreatePath(XElement element)
         {
             switch (element.Name.LocalName)
             {
                 case "path":
-                    return SixLabors.ImageSharp.Drawing.Path.TryParseSvgPath(element.Attribute("d")?.Value ?? string.Empty, out var path)
-                        ? path
-                        : null;
+                    return SKPath.ParseSvgPathData(element.Attribute("d")?.Value ?? string.Empty);
 
                 case "rect":
                     var width = ReadNumber(element, "width", 0);
@@ -131,28 +135,49 @@ namespace Homewatch.Core.Utilities
                         return null;
                     }
 
-                    var x = ReadNumber(element, "x", 0);
-                    var y = ReadNumber(element, "y", 0);
+                    var rectangle = SKRect.Create(ReadNumber(element, "x", 0), ReadNumber(element, "y", 0), width, height);
                     var cornerRadius = ReadNumber(element, "rx", ReadNumber(element, "ry", 0));
+                    var rectanglePath = new SKPath();
 
-                    return cornerRadius > 0
-                        ? new RoundedRectanglePolygon(x, y, width, height, cornerRadius)
-                        : new RectanglePolygon(x, y, width, height);
+                    if (cornerRadius > 0)
+                    {
+                        rectanglePath.AddRoundRect(rectangle, cornerRadius, cornerRadius);
+                    }
+                    else
+                    {
+                        rectanglePath.AddRect(rectangle);
+                    }
+
+                    return rectanglePath;
 
                 case "circle":
                     var radius = ReadNumber(element, "r", 0);
 
-                    return radius > 0
-                        ? new EllipsePolygon(ReadNumber(element, "cx", 0), ReadNumber(element, "cy", 0), radius)
-                        : null;
+                    if (radius <= 0)
+                    {
+                        return null;
+                    }
+
+                    var circlePath = new SKPath();
+
+                    circlePath.AddCircle(ReadNumber(element, "cx", 0), ReadNumber(element, "cy", 0), radius);
+
+                    return circlePath;
 
                 case "ellipse":
                     var radiusX = ReadNumber(element, "rx", 0);
                     var radiusY = ReadNumber(element, "ry", 0);
 
-                    return radiusX > 0 && radiusY > 0
-                        ? new EllipsePolygon(ReadNumber(element, "cx", 0), ReadNumber(element, "cy", 0), radiusX * 2, radiusY * 2)
-                        : null;
+                    if (radiusX <= 0 || radiusY <= 0)
+                    {
+                        return null;
+                    }
+
+                    var ellipsePath = new SKPath();
+
+                    ellipsePath.AddOval(SKRect.Create(ReadNumber(element, "cx", 0) - radiusX, ReadNumber(element, "cy", 0) - radiusY, radiusX * 2, radiusY * 2));
+
+                    return ellipsePath;
 
                 case "polygon":
                 case "polyline":
@@ -163,14 +188,18 @@ namespace Homewatch.Core.Utilities
                         return null;
                     }
 
-                    var points = new PointF[coordinates.Count / 2];
+                    var points = new SKPoint[coordinates.Count / 2];
 
                     for (var index = 0; index < points.Length; index++)
                     {
-                        points[index] = new PointF(coordinates[index * 2], coordinates[index * 2 + 1]);
+                        points[index] = new SKPoint(coordinates[index * 2], coordinates[index * 2 + 1]);
                     }
 
-                    return new Polygon(points);
+                    var polygonPath = new SKPath();
+
+                    polygonPath.AddPoly(points, true);
+
+                    return polygonPath;
 
                 default:
                     return null;
@@ -187,18 +216,18 @@ namespace Homewatch.Core.Utilities
                 || style.Contains("display:none", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static IntersectionRule ReadIntersectionRule(XElement element, IntersectionRule inheritedRule)
+        private static SKPathFillType ReadFillType(XElement element, SKPathFillType inheritedFillType)
         {
             var fillRule = element.Attribute("fill-rule")?.Value.Trim();
 
             if (string.IsNullOrEmpty(fillRule))
             {
-                return inheritedRule;
+                return inheritedFillType;
             }
 
             return string.Equals(fillRule, "evenodd", StringComparison.OrdinalIgnoreCase)
-                ? IntersectionRule.EvenOdd
-                : IntersectionRule.NonZero;
+                ? SKPathFillType.EvenOdd
+                : SKPathFillType.Winding;
         }
 
         private static float ReadNumber(XElement element, string attributeName, float defaultValue)
