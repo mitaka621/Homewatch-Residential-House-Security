@@ -106,10 +106,37 @@
             return deformation;
         }
 
+        float islandWobbleNoise(vec2 position, vec2 local) {
+            float maximumActivity = max(u_itemActivity[0], max(u_itemActivity[1], u_itemActivity[2]));
+            float driftingNoise = 0.0;
+            float radiatingNoise = 0.0;
+            float sourceWeight = 0.0;
+
+            if (maximumActivity < 1.0) {
+                driftingNoise = simplexNoise(local * 0.03 + vec2(u_time * 0.45, -u_time * 0.3));
+            }
+
+            for (int index = 0; index < 3; index++) {
+                float activity = u_itemActivity[index];
+
+                if (activity > 0.0) {
+                    float offset = position.x - u_items[index].x;
+                    float outward = sqrt(offset * offset + 36.0);
+                    float weight = activity / (offset * offset + 100.0);
+                    vec2 radiatingSample = vec2(outward * 0.03 - u_time * 0.45, local.y * 0.03 + float(index) * 7.3 - u_time * 0.12);
+
+                    radiatingNoise += simplexNoise(radiatingSample) * weight;
+                    sourceWeight += weight;
+                }
+            }
+
+            return mix(driftingNoise, radiatingNoise / max(sourceWeight, 0.000001), maximumActivity);
+        }
+
         float islandDistance(vec2 position) {
             vec2 local = position - u_islandCenter;
             float averageReveal = (u_itemReveal[0] + u_itemReveal[1] + u_itemReveal[2]) / 3.0;
-            float wobble = simplexNoise(local * 0.03 + vec2(u_time * 0.45, -u_time * 0.3))
+            float wobble = islandWobbleNoise(position, local)
                 * mix(0.7, 2.0, clamp(u_energy, 0.0, 1.4))
                 * (1.0 - 0.6 * averageReveal);
             return roundedBoxDistance(local, u_islandHalfSize, min(u_islandHalfSize.x, u_islandHalfSize.y)) + wobble

@@ -223,6 +223,8 @@
                 return;
             }
 
+            target.IsSyncEnabled = true;
+
             await SaveRemoteStorageAsync(target);
         }
         finally

@@ -2,6 +2,7 @@ using Homewatch.Contracts.Abstractions.Repositories;
 using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Dtos.RemoteStorageDtos;
 using Homewatch.Contracts.Dtos.SystemSettingsDtos;
+using Homewatch.Contracts.Dtos.VideoChunkDtos;
 using Homewatch.Core.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -194,28 +195,40 @@ namespace Homewatch.Core.BackgroundServices
                 return;
             }
 
-            using var session = _smbConnectionService.OpenSession(target);
+            var session = await SmbOperationRunner.RunAsync(() => _smbConnectionService.OpenSession(target));
 
-            if (!session.IsConnected)
+            try
             {
-                _logger.LogError("Failed to connect to {SmbShare}", target.SharePath);
-                return;
+                if (!session.IsConnected)
+                {
+                    _logger.LogError("Failed to connect to {SmbShare}", target.SharePath);
+                    return;
+                }
+
+                var cutoffUtc = DateTime.UtcNow - retention.Value;
+
+                var chunksToDelete = await _videoChunkReplicationRepository.GetAllExpiredReplicatedChunksForTargetAsync(target.Id, cutoffUtc);
+
+                await SmbOperationRunner.RunAsync(() => DeleteChunksFromRemoteStorage(session, chunksToDelete));
+
+                var deletionCount = await _videoChunkReplicationRepository.MarkReplicatedChunksAsDeletedAsync(target.Id, chunksToDelete.Select(x => x.Id).ToList());
+
+                _logger.LogInformation("Deleted and marked {Count} expired video chunks from {SmbShare}", deletionCount, target.SharePath);
             }
+            finally
+            {
+                await SmbOperationRunner.RunAsync(session.Dispose);
+            }
+        }
 
-            var cutoffUtc = DateTime.UtcNow - retention.Value;
-
-            var chunksToDelete = await _videoChunkReplicationRepository.GetAllExpiredReplicatedChunksForTargetAsync(target.Id, cutoffUtc);
-
+        private void DeleteChunksFromRemoteStorage(ISmbShareSession session, List<ExpiredVideoChunkDto> chunksToDelete)
+        {
             foreach (var chunk in chunksToDelete)
             {
                 var smbChunkFilePath = $@"{chunk.DeviceId}\{VideoChunkStorageUtilities.GetChunkDayFolder(chunk.FileName)}\{chunk.FileName}";
 
                 session.DeleteFile(smbChunkFilePath);
             }
-
-            var deletionCount = await _videoChunkReplicationRepository.MarkReplicatedChunksAsDeletedAsync(target.Id, chunksToDelete.Select(x => x.Id).ToList());
-
-            _logger.LogInformation("Deleted and marked {Count} expired video chunks from {SmbShare}", deletionCount, target.SharePath);
         }
 
         private async Task DeleteDbVideoChunkRecordsWithNoFootagePresentAnywhereAsync()

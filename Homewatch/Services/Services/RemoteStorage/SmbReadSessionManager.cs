@@ -1,5 +1,6 @@
 using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Dtos.RemoteStorageDtos;
+using Homewatch.Core.Utilities;
 using System.Collections.Concurrent;
 
 namespace Homewatch.Core.Services.RemoteStorage
@@ -27,7 +28,7 @@ namespace Homewatch.Core.Services.RemoteStorage
 
             try
             {
-                return await Task.Run(() => ReadWithPooledSession(target, relativePath), cancellationToken);
+                return await SmbOperationRunner.RunAsync(() => ReadWithPooledSession(target, relativePath), cancellationToken);
             }
             finally
             {

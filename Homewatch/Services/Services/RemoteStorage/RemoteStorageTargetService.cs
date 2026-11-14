@@ -119,7 +119,7 @@ namespace Homewatch.Core.Services.RemoteStorage
                 var password = await ResolvePasswordAsync(target);
                 var username = target.Username.Trim();
 
-                await Task.Run(() => _smbConnectionService.VerifyWriteAccess(sharePath, username, password))
+                await SmbOperationRunner.RunAsync(() => _smbConnectionService.VerifyWriteAccess(sharePath, username, password))
                     .WaitAsync(_verificationTimeout);
 
                 return CreateResult(true, $"Connected to {sharePath} and verified write access.");

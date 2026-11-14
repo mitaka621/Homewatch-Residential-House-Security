@@ -106,7 +106,7 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                CloseSession();
+                await SmbOperationRunner.RunAsync(CloseSession);
             }
         }
 
@@ -128,7 +128,7 @@ namespace Homewatch.Core.Services.RemoteStorage
 
                     if (!IsExpiredOnTarget(item.ChunkEndTime))
                     {
-                        CopyVideoChunk(localChunkPath, item);
+                        await SmbOperationRunner.RunAsync(() => CopyVideoChunk(localChunkPath, item), cancellationToken);
                     }
 
                     await _videoChunkReplicationRepository.MarkVideoChunkReplicatedAsync(Target.Id, item.VideoChunkId);
@@ -143,7 +143,7 @@ namespace Homewatch.Core.Services.RemoteStorage
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    CloseSession();
+                    await SmbOperationRunner.RunAsync(CloseSession);
 
                     if (!_isFailing)
                     {
