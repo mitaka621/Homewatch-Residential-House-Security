@@ -7,6 +7,7 @@ using Homewatch.Core.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Homewatch.Core.BackgroundServices
 {
@@ -195,7 +196,9 @@ namespace Homewatch.Core.BackgroundServices
                 return;
             }
 
+            var connectStartTimestamp = Stopwatch.GetTimestamp();
             var session = await SmbOperationRunner.RunAsync(() => _smbConnectionService.OpenSession(target));
+            var connectDuration = Stopwatch.GetElapsedTime(connectStartTimestamp);
 
             try
             {
@@ -209,11 +212,21 @@ namespace Homewatch.Core.BackgroundServices
 
                 var chunksToDelete = await _videoChunkReplicationRepository.GetAllExpiredReplicatedChunksForTargetAsync(target.Id, cutoffUtc);
 
+                var deleteStartTimestamp = Stopwatch.GetTimestamp();
+
                 await SmbOperationRunner.RunAsync(() => DeleteChunksFromRemoteStorage(session, chunksToDelete));
+
+                var deleteDuration = Stopwatch.GetElapsedTime(deleteStartTimestamp);
 
                 var deletionCount = await _videoChunkReplicationRepository.MarkReplicatedChunksAsDeletedAsync(target.Id, chunksToDelete.Select(x => x.Id).ToList());
 
-                _logger.LogInformation("Deleted and marked {Count} expired video chunks from {SmbShare}", deletionCount, target.SharePath);
+                _logger.LogInformation(
+                    "Deleted and marked {Count} expired video chunks from {SmbShare} (connect {ConnectMilliseconds:0} milliseconds, delete {DeleteMilliseconds:0} milliseconds, {AverageDeleteMilliseconds:0} milliseconds per chunk)",
+                    deletionCount,
+                    target.SharePath,
+                    connectDuration.TotalMilliseconds,
+                    deleteDuration.TotalMilliseconds,
+                    deleteDuration.TotalMilliseconds / Math.Max(chunksToDelete.Count, 1));
             }
             finally
             {

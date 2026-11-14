@@ -127,6 +127,7 @@ namespace Homewatch.Extensions
 
             services.AddHostedService<BackgroundCleanupService>();
             services.AddHostedService<CameraTelemetryWriterService>();
+            services.AddHostedService<ServerHealthMonitorService>();
 
             services.AddSingleton<RemoteStorageReplicationService>();
             services.AddSingleton<IChunkReplicationQueue>(sp => sp.GetRequiredService<RemoteStorageReplicationService>());

@@ -6,6 +6,7 @@ using Homewatch.Core.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace Homewatch.Core.Services.RemoteStorage
@@ -119,8 +120,15 @@ namespace Homewatch.Core.Services.RemoteStorage
                 var password = await ResolvePasswordAsync(target);
                 var username = target.Username.Trim();
 
+                var verificationStartTimestamp = Stopwatch.GetTimestamp();
+
                 await SmbOperationRunner.RunAsync(() => _smbConnectionService.VerifyWriteAccess(sharePath, username, password))
                     .WaitAsync(_verificationTimeout);
+
+                _logger.LogInformation(
+                    "Verified write access to {SharePath} in {VerificationMilliseconds:0} milliseconds (connect, sign in, open share, write, delete).",
+                    sharePath,
+                    Stopwatch.GetElapsedTime(verificationStartTimestamp).TotalMilliseconds);
 
                 return CreateResult(true, $"Connected to {sharePath} and verified write access.");
             }
