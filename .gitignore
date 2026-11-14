@@ -118,6 +118,7 @@ obj/**/staticwebassets.runtime.json
 /Homewatch/Homewatch/server.csr
 /Homewatch/Homewatch/server.key
 /Homewatch/Homewatch/server.pfx
+.env
 /Homewatch/.vs/ProjectEvaluation/homewatch.metadata.v9.bin
 /Homewatch/.vs/ProjectEvaluation/homewatch.projects.v9.bin
 /Homewatch/.vs/ProjectEvaluation/homewatch.strings.v9.bin
