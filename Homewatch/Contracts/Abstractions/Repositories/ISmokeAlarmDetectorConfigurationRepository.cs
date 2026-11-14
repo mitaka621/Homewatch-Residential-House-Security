@@ -9,7 +9,7 @@ namespace Homewatch.Contracts.Abstractions.Repositories
 
         Task<bool> UpdateConfigurationAsync(Guid deviceId, SmokeAlarmConfigurationDto configuration);
 
-        Task<SmokeAlarmConfigurationDto> GetSmokeAlarmConfigurationAsync(Guid deviceId);
+        Task<SmokeAlarmConfigurationDto?> GetSmokeAlarmConfigurationAsync(Guid deviceId);
 
         Task<int> CountDeviceConfigurationsAsync();
 

@@ -1,13 +1,17 @@
-﻿namespace Homewatch.Contracts.Dtos.SmokeAlarmDetectorDtos
+﻿using Homewatch.Contracts.Constants;
+
+namespace Homewatch.Contracts.Dtos.SmokeAlarmDetectorDtos
 {
     public class SmokeAlarmConfigurationDto
     {
         public Guid DeviceId { get; set; }
 
-        public double MinBatterySOCForAlert { get; set; }
+        public string DeviceName { get; set; } = null!;
 
-        public double ChargeSenseVoltageThreashold { get; set; }
+        public double MinBatterySOCForAlert { get; set; } = SmokeAlarmConfigurationDefaults.MinBatterySOCForAlert;
 
-        public double MaxVoltageOverchargeWarning { get; set; }
+        public double ChargeSenseVoltageThreashold { get; set; } = SmokeAlarmConfigurationDefaults.ChargeSenseVoltageThreashold;
+
+        public double MaxVoltageOverchargeWarning { get; set; } = SmokeAlarmConfigurationDefaults.MaxVoltageOverchargeWarning;
     }
 }

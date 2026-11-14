@@ -26,11 +26,19 @@
     padding: 12px 16px;
     margin-bottom: 12px;
     border-radius: 12px;
+    cursor: pointer;
+    user-select: none;
     transition: border-color 150ms ease, background-color 150ms ease;
 }
 
 .device-type-picker-scroll ::deep .device-type-row:hover {
     border-color: var(--mud-palette-primary);
+    background-color: rgba(var(--mud-palette-primary-rgb), 0.06);
+}
+
+.device-type-picker-scroll ::deep .device-type-row:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 2px;
 }
 
 .device-type-picker-scroll ::deep .device-type-row-selected,

@@ -1,3 +1,4 @@
+using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 using System.ComponentModel.DataAnnotations;
 
@@ -19,7 +20,7 @@ namespace Homewatch.Infrastructure.Data.Entities
 
         public bool IsSyncEnabled { get; set; }
 
-        public RetentionPeriod Retention { get; set; } = RetentionPeriod.ThreeMonths;
+        public RetentionPeriod Retention { get; set; } = RemoteStorageTargetDefaults.Retention;
 
         public List<VideoChunkReplication> VideoChunkReplications { get; set; } = new();
     }

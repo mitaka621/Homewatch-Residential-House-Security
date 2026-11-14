@@ -1,4 +1,5 @@
-﻿using Homewatch.Contracts.Enums;
+﻿using Homewatch.Contracts.Constants;
+using Homewatch.Contracts.Enums;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
 using System.ComponentModel.DataAnnotations;
@@ -29,7 +30,7 @@ namespace Homewatch.Infrastructure.Data.Entities
 
         [Required]
         [StringLength(10000)]
-        public string Icon { get; set; } = Icons.Material.Filled.Info;
+        public string Icon { get; set; } = NotificationDefaults.Icon;
 
         [StringLength(500)]
         public string? RelativeRedirectUrl { get; set; }

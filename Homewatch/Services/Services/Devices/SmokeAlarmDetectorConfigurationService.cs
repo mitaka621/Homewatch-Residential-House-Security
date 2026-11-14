@@ -1,9 +1,9 @@
-﻿using MapsterMapper;
-using Homewatch.Contracts.Abstractions.Repositories;
+﻿using Homewatch.Contracts.Abstractions.Repositories;
 using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Dtos.SmokeAlarmDetectorDtos;
 using Homewatch.Contracts.Models;
 using Homewatch.Core.Utilities;
+using MapsterMapper;
 
 namespace Homewatch.Core.Services.Devices
 {
@@ -39,12 +39,10 @@ namespace Homewatch.Core.Services.Devices
         public async Task<SmokeAlarmConfigurationModel> GetSmokeAlarmConfigurationAsync(Guid deviceId)
         {
             var configDto = await _smokeAlarmDetectorConfigurationRepository.GetSmokeAlarmConfigurationAsync(deviceId);
-            var model = _mapper.Map<SmokeAlarmConfigurationModel?>(configDto) ?? new SmokeAlarmConfigurationModel()
+            var model = _mapper.Map<SmokeAlarmConfigurationDto?, SmokeAlarmConfigurationModel?>(configDto) ?? new SmokeAlarmConfigurationModel()
             {
                 DeviceId = deviceId,
             };
-
-            model.DeviceName = await _deviceRepository.GetDeviceNameAsync(deviceId) ?? string.Empty;
 
             return model;
         }

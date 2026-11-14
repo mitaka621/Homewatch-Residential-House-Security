@@ -1,5 +1,6 @@
 ﻿@rendermode InteractiveServer
 @using Homewatch.Contracts.Dtos.ExportedVideoDtos
+@using System.Globalization
 @implements IDisposable
 
 @inject IVideoExportService _videoExportService
@@ -11,105 +12,102 @@
     <Authorized>
         <MudMenu @ref="_menu" AnchorOrigin="Origin.BottomRight"
                  TransformOrigin="Origin.TopRight"
-                 Dense="true"
-                 PopoverClass="user-menu-popover">
+                 PopoverClass="header-menu-popover"
+                 ListClass="header-menu-popover-list">
             <ActivatorContent>
                 <MudBadge Overlap="true" Origin="Origin.TopLeft" Color="Color.Error" Content="_activeExportsCount" Visible="_activeExportsCount>0">
                     <MudIconButton Style="padding: 0.2rem 0 0 0; margin-right:2rem;" Size="Size.Medium" Color="Color.Default" Icon="@Icons.Material.Filled.Downloading" />
                 </MudBadge>
             </ActivatorContent>
             <ChildContent>
-                <MudStack Style="width:500px; max-height:60vh; overflow-y:auto;" Class="pa-3" Spacing="2">
-                    <MudText Typo="Typo.subtitle1" Class="px-1">Video Export Manager</MudText>
-                    <MudDivider />
-
-                    @if (_exports.Count == 0)
-                    {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-3" Align="Align.Center">
-                            No video exports yet.
-                        </MudText>
-                    }
-                    else
-                    {
-                        @foreach (var export in _exports)
+                <div class="header-menu">
+                    <div class="header-menu-header">
+                        <span class="header-menu-title">Video Exports</span>
+                    </div>
+                    <div class="header-menu-list">
+                        @if (_exports.Count == 0)
                         {
-                            <MudPaper Elevation="1" Outlined="true" Class="pa-3">
-                                <MudStack Spacing="1">
-                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                        <MudText Typo="Typo.body1">
-                                            @(string.IsNullOrEmpty(export.CameraName) ? export.CameraId.ToString() : export.CameraName)
-                                        </MudText>
-                                        <MudChip T="string" Size="Size.Small" Color="GetStatusColor(export.ExportStatus)">
-                                            @GetStatusLabel(export.ExportStatus)
-                                        </MudChip>
-                                    </MudStack>
+                            <div class="header-menu-empty">
+                                <MudIcon Icon="@Icons.Material.Filled.VideoLibrary" />
+                                <span>No video exports yet</span>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var export in _exports)
+                            {
+                                <div class="header-menu-card @(export.ExportStatus == ExportVideoStatuses.Expired ? "header-menu-card-muted" : string.Empty)">
+                                    <div class="header-menu-card-icon">
+                                        <MudIcon Icon="@Icons.Material.Filled.Movie" Size="Size.Small" />
+                                    </div>
+                                    <div class="header-menu-card-body">
+                                        <div class="header-menu-card-heading">
+                                            <span class="header-menu-card-title">
+                                                @(string.IsNullOrEmpty(export.CameraName) ? export.CameraId.ToString() : export.CameraName)
+                                            </span>
+                                            <span class="header-menu-chip @GetStatusChipClass(export.ExportStatus)">@GetStatusLabel(export.ExportStatus)</span>
+                                        </div>
+                                        <div class="header-menu-card-text">
+                                            @_userTimeZoneService.ToLocal(export.VideoStartDate).ToString("MMM dd, HH:mm:ss") - @_userTimeZoneService.ToLocal(export.VideoEndDate).ToString("MMM dd, HH:mm:ss")
+                                        </div>
 
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        @_userTimeZoneService.ToLocal(export.VideoStartDate).ToString("MMM dd, HH:mm:ss")
-                                        -
-                                        @_userTimeZoneService.ToLocal(export.VideoEndDate).ToString("MMM dd, HH:mm:ss")
-                                    </MudText>
+                                        @switch (export.ExportStatus)
+                                        {
+                                            case ExportVideoStatuses.Started:
+                                                var progress = _progress.GetValueOrDefault(export.Id);
 
-                                    @switch (export.ExportStatus)
-                                    {
-                                        case ExportVideoStatuses.Started:
-                                            var progress = _progress.GetValueOrDefault(export.Id);
-                                            <MudStack Spacing="1">
-                                                @if (progress != null)
+                                                if (progress != null)
                                                 {
-                                                    <MudProgressLinear Color="Color.Primary"
-                                                                       Value="@progress.ProgressPercent"
-                                                                       Rounded="true"
-                                                                       Size="Size.Medium" />
-                                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                                        <MudText Typo="Typo.caption">Encoding @progress.ProgressPercent.ToString("0.#")%</MudText>
-                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@GetTimeRemainingLabel(progress)</MudText>
-                                                    </MudStack>
+                                                    <div class="header-menu-progress">
+                                                        <div class="header-menu-progress-bar" style="width:@(progress.ProgressPercent.ToString("0.#", CultureInfo.InvariantCulture))%"></div>
+                                                    </div>
+                                                    <div class="header-menu-card-status">
+                                                        <span class="header-menu-card-meta header-menu-card-status-grow">Encoding @progress.ProgressPercent.ToString("0.#")%</span>
+                                                        <span class="header-menu-card-meta">@GetTimeRemainingLabel(progress)</span>
+                                                    </div>
                                                 }
                                                 else
                                                 {
-                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                                    <div class="header-menu-card-status">
                                                         <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" />
-                                                        <MudText Typo="Typo.caption">Preparing...</MudText>
-                                                    </MudStack>
+                                                        <span class="header-menu-card-meta">Preparing...</span>
+                                                    </div>
                                                 }
-                                                <MudStack Row="true" Justify="Justify.FlexEnd">
-                                                    <MudButton StartIcon="@Icons.Material.Filled.Stop"
-                                                               Size="Size.Small"
-                                                               Color="Color.Error"
-                                                               Variant="Variant.Outlined"
-                                                               OnClick="() => CancelAsync(export.Id)"
-                                                               Disabled="_cancelling.Contains(export.Id)">
-                                                        Stop
-                                                    </MudButton>
-                                                </MudStack>
-                                            </MudStack>
-                                            break;
-                                        case ExportVideoStatuses.Finished:
-                                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                                <MudText Typo="Typo.caption" Color="Color.Secondary">@export.SizeInMB MB</MudText>
-                                                <MudButton Href="@export.ExportedURLForDownload"
-                                                           download="@GetDownloadFileName(export)"
-                                                           StartIcon="@Icons.Material.Filled.Download"
-                                                           Size="Size.Small"
-                                                           Color="Color.Primary"
-                                                           Variant="Variant.Filled">
-                                                    Download
-                                                </MudButton>
-                                            </MudStack>
-                                            break;
-                                        case ExportVideoStatuses.Expired:
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">This export has expired and is no longer available.</MudText>
-                                            break;
-                                        case ExportVideoStatuses.Failed:
-                                            <MudText Typo="Typo.caption" Color="Color.Error">Export failed. No footage was available for this range.</MudText>
-                                            break;
-                                    }
-                                </MudStack>
-                            </MudPaper>
+
+                                                <div class="header-menu-card-actions">
+                                                    <button type="button"
+                                                            class="header-menu-action header-menu-action-danger"
+                                                            disabled="@_cancelling.Contains(export.Id)"
+                                                            @onclick="() => CancelAsync(export.Id)">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Stop" Size="Size.Small" />
+                                                        <span>Stop</span>
+                                                    </button>
+                                                </div>
+                                                break;
+                                            case ExportVideoStatuses.Finished:
+                                                <div class="header-menu-card-actions">
+                                                    <a class="header-menu-action header-menu-action-accent"
+                                                       href="@export.ExportedURLForDownload"
+                                                       download="@GetDownloadFileName(export)">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" />
+                                                        <span>Download</span>
+                                                    </a>
+                                                    <span class="header-menu-card-meta">@export.SizeInMB MB</span>
+                                                </div>
+                                                break;
+                                            case ExportVideoStatuses.Expired:
+                                                <div class="header-menu-card-text">This export has expired and is no longer available.</div>
+                                                break;
+                                            case ExportVideoStatuses.Failed:
+                                                <div class="header-menu-card-text header-menu-card-error">Export failed. No footage was available for this range.</div>
+                                                break;
+                                        }
+                                    </div>
+                                </div>
+                            }
                         }
-                    }
-                </MudStack>
+                    </div>
+                </div>
             </ChildContent>
         </MudMenu>
     </Authorized>
@@ -248,13 +246,12 @@
         _ => status.ToString()
     };
 
-    private static Color GetStatusColor(ExportVideoStatuses status) => status switch
+    private static string GetStatusChipClass(ExportVideoStatuses status) => status switch
     {
-        ExportVideoStatuses.Started => Color.Info,
-        ExportVideoStatuses.Finished => Color.Success,
-        ExportVideoStatuses.Expired => Color.Default,
-        ExportVideoStatuses.Failed => Color.Error,
-        _ => Color.Default
+        ExportVideoStatuses.Started => "header-menu-chip-info",
+        ExportVideoStatuses.Finished => "header-menu-chip-success",
+        ExportVideoStatuses.Failed => "header-menu-chip-error",
+        _ => "header-menu-chip-muted"
     };
 
     private string GetDownloadFileName(ExportedVideoDto export)

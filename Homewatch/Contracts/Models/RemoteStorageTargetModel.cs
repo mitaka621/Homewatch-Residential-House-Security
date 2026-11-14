@@ -1,3 +1,4 @@
+using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 using System.ComponentModel.DataAnnotations;
 
@@ -21,7 +22,7 @@ namespace Homewatch.Contracts.Models
 
         public bool IsSyncEnabled { get; set; }
 
-        public RetentionPeriod Retention { get; set; }
+        public RetentionPeriod Retention { get; set; } = RemoteStorageTargetDefaults.Retention;
 
         public bool IsVerifying { get; set; }
 

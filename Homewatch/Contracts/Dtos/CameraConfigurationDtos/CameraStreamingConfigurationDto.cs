@@ -1,4 +1,5 @@
-﻿using Homewatch.Contracts.Enums;
+﻿using Homewatch.Contracts.Constants;
+using Homewatch.Contracts.Enums;
 using SixLabors.ImageSharp.Processing;
 
 namespace Homewatch.Contracts.Dtos.CameraConfigurationDtos
@@ -7,22 +8,22 @@ namespace Homewatch.Contracts.Dtos.CameraConfigurationDtos
     {
         public Guid DeviceId { get; set; }
 
-        public float FrameRotation { get; set; } = 0;
+        public float FrameRotation { get; set; } = CameraConfigurationDefaults.FrameRotation;
 
-        public float ZoomFactor { get; set; } = 1;
+        public float ZoomFactor { get; set; } = CameraConfigurationDefaults.ZoomFactor;
 
-        public int ZoomStartX { get; set; } = 0;
+        public int ZoomStartX { get; set; } = CameraConfigurationDefaults.ZoomStartX;
 
-        public int ZoomStartY { get; set; } = 0;
+        public int ZoomStartY { get; set; } = CameraConfigurationDefaults.ZoomStartY;
 
-        public float Brightness { get; set; } = 1;
+        public float Brightness { get; set; } = CameraConfigurationDefaults.Brightness;
 
-        public float Contrast { get; set; } = 1;
+        public float Contrast { get; set; } = CameraConfigurationDefaults.Contrast;
 
-        public FlipMode FlipMode { get; set; } = FlipMode.None;
+        public FlipMode FlipMode { get; set; } = CameraConfigurationDefaults.FlipMode;
 
-        public CameraAspectRatios CameraAspectRatio { get; set; } = CameraAspectRatios.Original;
+        public CameraAspectRatios CameraAspectRatio { get; set; } = CameraConfigurationDefaults.CameraAspectRatio;
 
-        public CameraSensorResolutions SensorResolution { get; set; } = CameraSensorResolutions.Resolution2048x1536;
+        public CameraSensorResolutions SensorResolution { get; set; } = CameraConfigurationDefaults.SensorResolution;
     }
 }

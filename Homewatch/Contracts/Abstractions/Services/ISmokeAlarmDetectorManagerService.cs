@@ -6,7 +6,7 @@ namespace Homewatch.Contracts.Abstractions.Services
     {
         public event Action<SmokeAlarmDetectorPayloadDto>? OnNewTelemetryAdded;
 
-        Task IngestAsync(SmokeAlarmDetectorPayloadDto payload);
+        Task IngestAsync(SmokeAlarmDetectorPayloadDto payload, SmokeAlarmConfigurationDto config);
 
         Task<SmokeAlarmDetectorPayloadDto?> GetLatestTelemetryAsync(Guid deviceId);
     }

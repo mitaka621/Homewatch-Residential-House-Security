@@ -6,6 +6,7 @@ using Homewatch.Core.Utilities;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace Homewatch.Core.Services.Users
@@ -67,6 +68,13 @@ namespace Homewatch.Core.Services.Users
 
         public async Task<Guid?> CreateUserAsync(CreateUserModel model)
         {
+            model.Email = model.Email.Trim();
+
+            if (!MiscUtilities.ValidateModel(model, out ICollection<ValidationResult> validationResults))
+            {
+                throw new ValidationException(string.Join(" ", validationResults.Select(x => x.ErrorMessage)));
+            }
+
             if (await _userRepository.DoesUserExistAsync(model.UserName, model.Email))
             {
                 _logger.LogInformation("CreateUser failed: user {UserName} / {Email} already exists.", model.UserName, model.Email);

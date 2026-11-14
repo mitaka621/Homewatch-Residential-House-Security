@@ -1,3 +1,4 @@
+using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 
 namespace Homewatch.Contracts.Dtos.RemoteStorageDtos
@@ -14,6 +15,6 @@ namespace Homewatch.Contracts.Dtos.RemoteStorageDtos
 
         public bool IsSyncEnabled { get; set; }
 
-        public RetentionPeriod Retention { get; set; }
+        public RetentionPeriod Retention { get; set; } = RemoteStorageTargetDefaults.Retention;
     }
 }

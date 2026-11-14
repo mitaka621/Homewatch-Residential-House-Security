@@ -211,5 +211,23 @@ namespace Homewatch.Infrastructure.Repositories
                 .AsNoTracking()
                 .AnyAsync(u => u.UserName == userName || u.Email == email);
         }
+
+        public async Task<bool> IsEmailInUseAsync(string email, Guid excludedUserId)
+        {
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+            return await context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Id != excludedUserId && u.Email == email);
+        }
+
+        public async Task<bool> UpdateEmailAsync(Guid userId, string email)
+        {
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+            return await context.Users
+                .Where(u => u.Id == userId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.Email, email)) > 0;
+        }
     }
 }

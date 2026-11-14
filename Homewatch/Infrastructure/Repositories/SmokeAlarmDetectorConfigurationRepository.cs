@@ -1,8 +1,8 @@
-﻿using MapsterMapper;
-using Homewatch.Contracts.Abstractions.Repositories;
+﻿using Homewatch.Contracts.Abstractions.Repositories;
 using Homewatch.Contracts.Abstractions.UnitOfWork;
 using Homewatch.Contracts.Dtos.SmokeAlarmDetectorDtos;
 using Homewatch.Infrastructure.Data;
+using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 
 namespace Homewatch.Infrastructure.Repositories
@@ -47,15 +47,23 @@ namespace Homewatch.Infrastructure.Repositories
             return result > 0;
         }
 
-        public async Task<SmokeAlarmConfigurationDto> GetSmokeAlarmConfigurationAsync(Guid deviceId)
+        public async Task<SmokeAlarmConfigurationDto?> GetSmokeAlarmConfigurationAsync(Guid deviceId)
         {
             var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var configuration = await dbContext.SmokeAlarmDetectorConfigurations
                 .AsNoTracking()
+                .Select(x => new SmokeAlarmConfigurationDto()
+                {
+                    DeviceId = x.DeviceId,
+                    ChargeSenseVoltageThreashold = x.ChargeSenseVoltageThreashold,
+                    DeviceName = x.Device.Name ?? string.Empty,
+                    MaxVoltageOverchargeWarning = x.MaxVoltageOverchargeWarning,
+                    MinBatterySOCForAlert = x.MinBatterySOCForAlert,
+                })
                 .FirstOrDefaultAsync(c => c.DeviceId == deviceId);
 
-            return _mapper.Map<SmokeAlarmConfigurationDto>(configuration!);
+            return configuration;
         }
 
         public async Task<int> CountDeviceConfigurationsAsync()

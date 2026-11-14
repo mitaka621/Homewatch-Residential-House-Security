@@ -88,7 +88,7 @@
                                 <MudStack Spacing="2" Style="width:180px;">
                                     <MudButton Variant="Variant.Outlined"
                                                Color="Color.Primary"
-                                               StartIcon="@Icons.Material.Filled.NetworkCheck"
+                                               StartIcon="@(_isSavingRemoteStorage ? null : Icons.Material.Filled.NetworkCheck)"
                                                OnClick="() => SaveAndVerifyTargetAsync(target)"
                                                Disabled="_isSavingRemoteStorage">
                                         @if (_isSavingRemoteStorage)
@@ -106,7 +106,7 @@
                                                StartIcon="@Icons.Material.Filled.Delete"
                                                OnClick="() => RemoveTarget(target)"
                                                Disabled="target.IsVerifying">
-                                        Remove
+                                        <MudText>Remove</MudText>
                                     </MudButton>
                                 </MudStack>
                             </MudStack>
@@ -162,7 +162,7 @@
             <MudCardActions>
                 <MudButton Variant="Variant.Outlined"
                            Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Save"
+                           StartIcon="@(_isSaving ? null : Icons.Material.Filled.Save)"
                            OnClick="SaveServerSideStorageSettingsAsync"
                            Disabled="_isSaving">
                     @if (_isSaving)
@@ -197,10 +197,7 @@
 
     private void AddTarget()
     {
-        _targets.Add(new RemoteStorageTargetModel
-        {
-            Retention = RetentionPeriod.ThreeMonths
-        });
+        _targets.Add(new RemoteStorageTargetModel());
     }
 
     private void RemoveTarget(RemoteStorageTargetModel target)

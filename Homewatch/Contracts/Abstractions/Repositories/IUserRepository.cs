@@ -27,5 +27,9 @@ namespace Homewatch.Contracts.Abstractions.Repositories
         Task<bool> DeleteUserAsync(Guid userId);
 
         Task<bool> DoesUserExistAsync(string userName, string email);
+
+        Task<bool> IsEmailInUseAsync(string email, Guid excludedUserId);
+
+        Task<bool> UpdateEmailAsync(Guid userId, string email);
     }
 }

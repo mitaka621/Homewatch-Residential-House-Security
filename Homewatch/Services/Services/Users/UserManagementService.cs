@@ -3,6 +3,7 @@ using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Dtos.UserDtos;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homewatch.Core.Services.Users
 {
@@ -33,6 +34,25 @@ namespace Homewatch.Core.Services.Users
 
         public Task<List<RoleDto>> GetAllRolesAsync()
             => _userRoleRepository.GetAllRolesAsync();
+
+        public async Task<UpdateUserEmailResult> UpdateUserEmailAsync(Guid userId, string email)
+        {
+            var normalizedEmail = email.Trim();
+
+            if (normalizedEmail.Length > UserConstraints.EmailMaximumLength || !new EmailAddressAttribute().IsValid(normalizedEmail))
+            {
+                return UpdateUserEmailResult.InvalidEmail;
+            }
+
+            if (await _userRepository.IsEmailInUseAsync(normalizedEmail, userId))
+            {
+                return UpdateUserEmailResult.EmailInUse;
+            }
+
+            return await _userRepository.UpdateEmailAsync(userId, normalizedEmail)
+                ? UpdateUserEmailResult.Success
+                : UpdateUserEmailResult.UserNotFound;
+        }
 
         public async Task<UpdateUserRolesResult> UpdateUserRolesAsync(Guid userId, List<Guid> roleIds, Guid currentUserId)
         {

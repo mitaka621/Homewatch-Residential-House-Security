@@ -1,4 +1,5 @@
-﻿using Homewatch.Contracts.Enums;
+﻿using Homewatch.Contracts.Constants;
+using Homewatch.Contracts.Enums;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -40,6 +41,6 @@ namespace Homewatch.Infrastructure.Data.Entities
         public PreprovisionStatus PreprovisionStatus { get; set; }
 
         [Required]
-        public int RemainingAttempts { get; set; } = 3;
+        public int RemainingAttempts { get; set; } = PreprovisionAttemptDefaults.RemainingAttempts;
     }
 }

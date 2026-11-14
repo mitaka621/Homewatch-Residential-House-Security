@@ -44,9 +44,9 @@
                 </MudStack>
             </MudCardContent>
             <MudCardActions>
-                <MudButton Variant="Variant.Filled"
+                <MudButton Variant="Variant.Outlined"
                            Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Save"
+                           StartIcon="@(_isSaving ? null : Icons.Material.Filled.Save)"
                            OnClick="SaveAsync"
                            Disabled="_isSaving">
                     @if (_isSaving)

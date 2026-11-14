@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Homewatch.Contracts.Constants;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homewatch.Infrastructure.Data.Entities
@@ -11,10 +12,10 @@ namespace Homewatch.Infrastructure.Data.Entities
         [ForeignKey(nameof(DeviceId))]
         public Device Device { get; set; } = null!;
 
-        public double MinBatterySOCForAlert { get; set; } = 10.0;
+        public double MinBatterySOCForAlert { get; set; } = SmokeAlarmConfigurationDefaults.MinBatterySOCForAlert;
 
-        public double ChargeSenseVoltageThreashold { get; set; } = 4.0;
+        public double ChargeSenseVoltageThreashold { get; set; } = SmokeAlarmConfigurationDefaults.ChargeSenseVoltageThreashold;
 
-        public double MaxVoltageOverchargeWarning { get; set; } = 4.2;
+        public double MaxVoltageOverchargeWarning { get; set; } = SmokeAlarmConfigurationDefaults.MaxVoltageOverchargeWarning;
     }
 }

@@ -1,3 +1,4 @@
+using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 using System.ComponentModel.DataAnnotations;
 
@@ -8,16 +9,16 @@ namespace Homewatch.Infrastructure.Data.Entities
         [Key]
         public Guid Id { get; set; }
 
-        public RetentionPeriod EncodedVideoRetention { get; set; }
+        public RetentionPeriod EncodedVideoRetention { get; set; } = SystemSettingsDefaults.EncodedVideoRetention;
 
-        public RetentionPeriod CameraChunkRetention { get; set; }
+        public RetentionPeriod CameraChunkRetention { get; set; } = SystemSettingsDefaults.CameraChunkRetention;
 
-        public int SecurityMinFps { get; set; } = 4;
+        public int SecurityMinFps { get; set; } = SystemSettingsDefaults.SecurityMinFps;
 
-        public double SecurityMaxTemperatureC { get; set; } = 90;
+        public double SecurityMaxTemperatureC { get; set; } = SystemSettingsDefaults.SecurityMaxTemperatureC;
 
-        public double SecurityMaxHumidityPercent { get; set; } = 70;
+        public double SecurityMaxHumidityPercent { get; set; } = SystemSettingsDefaults.SecurityMaxHumidityPercent;
 
-        public RetentionPeriod DismissedNotificationRetention { get; set; } = RetentionPeriod.OneYear;
+        public RetentionPeriod DismissedNotificationRetention { get; set; } = SystemSettingsDefaults.DismissedNotificationRetention;
     }
 }

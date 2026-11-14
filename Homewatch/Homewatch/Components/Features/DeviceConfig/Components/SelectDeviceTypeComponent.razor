@@ -93,7 +93,14 @@
                         ItemSize="134"
                         OverscanCount="3">
                 <ItemContent>
-                    <MudPaper Class="@GetRowClass(deviceType)" Outlined="true" Elevation="0">
+                    <MudPaper Class="@GetRowClass(deviceType)"
+                              Outlined="true"
+                              Elevation="0"
+                              role="button"
+                              tabindex="0"
+                              aria-pressed="@((model.DeviceTypeId == deviceType.Id).ToString().ToLowerInvariant())"
+                              @onclick="() => SelectDeviceType(deviceType.Id, deviceType.DeviceCategory)"
+                              @onkeydown="(KeyboardEventArgs args) => OnRowKeyDownAsync(args, deviceType)">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Class="device-type-row-content">
                             <MudImage Src="@deviceType.GetIconUrl(_deviceTypeIconStorageService)"
                                       Alt="@deviceType.Name"
@@ -114,9 +121,6 @@
                             {
                                 <MudText Typo="Typo.body2" Class="device-type-description mud-text-secondary">@deviceType.Description</MudText>
                             }
-                            <MudFab Color="@(model.DeviceTypeId == deviceType.Id ? Color.Success : Color.Primary)"
-                                    StartIcon="@Icons.Material.Filled.Check"
-                                    OnClick="() => SelectDeviceType(deviceType.Id, deviceType.DeviceCategory)" />
                         </MudStack>
                     </MudPaper>
                 </ItemContent>
@@ -232,6 +236,14 @@
         }
 
         await ModelChanged.InvokeAsync();
+    }
+
+    private async Task OnRowKeyDownAsync(KeyboardEventArgs args, DeviceTypeDisplayModel deviceType)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            await SelectDeviceType(deviceType.Id, deviceType.DeviceCategory);
+        }
     }
 
     private int GetDeviceTypeCount(DeviceTypeCategories category)

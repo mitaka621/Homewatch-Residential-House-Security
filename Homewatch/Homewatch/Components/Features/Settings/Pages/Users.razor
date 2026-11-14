@@ -43,12 +43,12 @@
                               Class="mt-0"
                               DebounceInterval="200"
                               Immediate="true" />
-                <MudButton Variant="Variant.Filled"
+                <MudButton Variant="Variant.Outlined"
                            Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.PersonAdd"
                            OnClick="ShowAddUserDialogAsync"
                            Class="ml-2">
-                    Add user
+                    <MudText>Add User</MudText>
                 </MudButton>
             </ToolBarContent>
             <Columns>
@@ -79,12 +79,11 @@
                 <TemplateColumn Title="Actions" Sortable="false" HeaderStyle="width: 120px;">
                     <CellTemplate>
                         <MudStack Row Spacing="1">
-                            <MudTooltip Text="@GetEditTooltip(context.Item)">
+                            <MudTooltip Text="Edit user">
                                 <MudIconButton Icon="@Icons.Material.Filled.Edit"
                                                Size="Size.Small"
                                                Color="Color.Primary"
-                                               Disabled="@(!CanEdit(context.Item))"
-                                               OnClick="() => ShowEditRolesDialogAsync(context.Item)" />
+                                               OnClick="() => ShowEditUserDialogAsync(context.Item)" />
                             </MudTooltip>
                             <MudTooltip Text="@GetDeleteTooltip(context.Item)">
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete"
@@ -169,18 +168,13 @@
         }
     }
 
-    private async Task ShowEditRolesDialogAsync(UserListItemDto user)
+    private async Task ShowEditUserDialogAsync(UserListItemDto user)
     {
-        if (!CanEdit(user))
-        {
-            _snackbar.Add(GetEditTooltip(user), Severity.Warning);
-            return;
-        }
-
-        var parameters = new DialogParameters<EditUserRolesDialog>
+        var parameters = new DialogParameters<EditUserDialog>
         {
             { x => x.UserId, user.Id },
             { x => x.UserName, user.UserName },
+            { x => x.InitialEmail, user.Email },
             { x => x.InitialRoleIds, user.Roles.Select(r => r.Id).ToList() },
             { x => x.CurrentUserId, _currentUserId }
         };
@@ -192,7 +186,7 @@
             FullWidth = true,
         };
 
-        var dialog = await _dialogService.ShowAsync<EditUserRolesDialog>($"Edit roles - {user.UserName}", parameters, options);
+        var dialog = await _dialogService.ShowAsync<EditUserDialog>($"Edit user - {user.UserName}", parameters, options);
         var result = await dialog.Result;
 
         if (result is not null && !result.Canceled && result.Data is true)
@@ -265,9 +259,6 @@
     private bool CanDelete(UserListItemDto user)
         => !IsSelf(user) && !IsLastAdmin(user);
 
-    private bool CanEdit(UserListItemDto user)
-        => !IsSelf(user);
-
     private string GetDeleteTooltip(UserListItemDto user)
     {
         if (IsSelf(user))
@@ -281,16 +272,6 @@
         }
 
         return "Delete";
-    }
-
-    private string GetEditTooltip(UserListItemDto user)
-    {
-        if (IsSelf(user))
-        {
-            return "You cannot edit your own roles.";
-        }
-
-        return "Edit roles";
     }
 
     private static Color GetRoleColor(string roleName) => roleName switch

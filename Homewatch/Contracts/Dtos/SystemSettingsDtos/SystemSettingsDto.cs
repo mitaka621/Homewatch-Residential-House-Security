@@ -1,19 +1,20 @@
+using Homewatch.Contracts.Constants;
 using Homewatch.Contracts.Enums;
 
 namespace Homewatch.Contracts.Dtos.SystemSettingsDtos
 {
     public class SystemSettingsDto
     {
-        public RetentionPeriod EncodedVideoRetention { get; set; }
+        public RetentionPeriod EncodedVideoRetention { get; set; } = SystemSettingsDefaults.EncodedVideoRetention;
 
-        public RetentionPeriod CameraChunkRetention { get; set; }
+        public RetentionPeriod CameraChunkRetention { get; set; } = SystemSettingsDefaults.CameraChunkRetention;
 
-        public int SecurityMinFps { get; set; } = 4;
+        public int SecurityMinFps { get; set; } = SystemSettingsDefaults.SecurityMinFps;
 
-        public double SecurityMaxTemperatureC { get; set; } = 60;
+        public double SecurityMaxTemperatureC { get; set; } = SystemSettingsDefaults.SecurityMaxTemperatureC;
 
-        public double SecurityMaxHumidityPercent { get; set; } = 80;
+        public double SecurityMaxHumidityPercent { get; set; } = SystemSettingsDefaults.SecurityMaxHumidityPercent;
 
-        public RetentionPeriod DismissedNotificationRetention { get; set; } = RetentionPeriod.OneYear;
+        public RetentionPeriod DismissedNotificationRetention { get; set; } = SystemSettingsDefaults.DismissedNotificationRetention;
     }
 }

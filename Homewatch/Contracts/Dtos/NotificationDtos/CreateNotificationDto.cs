@@ -1,4 +1,5 @@
-﻿using Homewatch.Contracts.Enums;
+﻿using Homewatch.Contracts.Constants;
+using Homewatch.Contracts.Enums;
 using MudBlazor;
 
 namespace Homewatch.Contracts.Dtos.NotificationDtos
@@ -11,7 +12,7 @@ namespace Homewatch.Contracts.Dtos.NotificationDtos
 
         public Color IconColor { get; set; }
 
-        public string Icon { get; set; } = Icons.Material.Filled.Info;
+        public string Icon { get; set; } = NotificationDefaults.Icon;
 
         public string? RelativeRedirectUrl { get; set; }
 

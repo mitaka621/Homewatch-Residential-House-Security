@@ -60,9 +60,9 @@ namespace Homewatch.Infrastructure.Data
                 new SystemSettings
                 {
                     Id = SystemSettingsId,
-                    EncodedVideoRetention = Contracts.Enums.RetentionPeriod.OneMonth,
-                    CameraChunkRetention = Contracts.Enums.RetentionPeriod.OneWeek,
-                    DismissedNotificationRetention = Contracts.Enums.RetentionPeriod.OneYear
+                    EncodedVideoRetention = Contracts.Constants.SystemSettingsDefaults.EncodedVideoRetention,
+                    CameraChunkRetention = Contracts.Constants.SystemSettingsDefaults.CameraChunkRetention,
+                    DismissedNotificationRetention = Contracts.Constants.SystemSettingsDefaults.DismissedNotificationRetention
                 });
 
             modelBuilder.Entity<Role>().HasData(

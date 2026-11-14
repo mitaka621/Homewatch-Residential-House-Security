@@ -12,6 +12,8 @@ namespace Homewatch.Contracts.Abstractions.Services
 
         Task<UpdateUserRolesResult> UpdateUserRolesAsync(Guid userId, List<Guid> roleIds, Guid currentUserId);
 
+        Task<UpdateUserEmailResult> UpdateUserEmailAsync(Guid userId, string email);
+
         Task<DeleteUserResult> DeleteUserAsync(Guid userId, Guid currentUserId);
     }
 }

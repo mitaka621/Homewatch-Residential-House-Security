@@ -1,3 +1,4 @@
+using Homewatch.Contracts.Constants;
 using System.ComponentModel.DataAnnotations;
 
 namespace Homewatch.Contracts.Models
@@ -10,7 +11,7 @@ namespace Homewatch.Contracts.Models
 
         [EmailAddress(ErrorMessage = "Invalid email address format.")]
         [Required(ErrorMessage = "Email is required.")]
-        [StringLength(200, ErrorMessage = "Email must be at most 200 characters.")]
+        [StringLength(UserConstraints.EmailMaximumLength, ErrorMessage = "Email must be at most {1} characters.")]
         public string Email { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Password is required.")]

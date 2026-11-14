@@ -1,8 +1,12 @@
+@inject NavigationManager _navigationManager
+
 <AuthorizeView>
     <Authorized>
-        <MudMenu AnchorOrigin="Origin.BottomRight"
+        <MudMenu @ref="_menu"
+                 AnchorOrigin="Origin.BottomRight"
                  TransformOrigin="Origin.TopRight"
-                 Dense="true">
+                 PopoverClass="header-menu-popover"
+                 ListClass="header-menu-popover-list">
             <ActivatorContent>
                 <span class="user-menu-activator">
                     <MudAvatar Color="Color.Primary"
@@ -13,27 +17,22 @@
                 </span>
             </ActivatorContent>
             <ChildContent>
-                <div class="user-menu-header">
-                    <MudText Typo="Typo.subtitle2" Class="user-menu-name">
-                        @context.User.Identity?.Name
-                    </MudText>
-                </div>
-                <MudDivider />
-                <MudMenuItem Icon="@Icons.Material.Filled.ManageAccounts"
-                             Href="/account/settings">
-                    User Settings
-                </MudMenuItem>
-                <MudDivider />
-                <div class="user-menu-logout">
-                    <form method="post" action="/api/auth/logout" onsubmit="window.showSubmitOverlay()">
+                <div class="header-menu header-menu-compact">
+                    <div class="header-menu-header">
+                        <span class="header-menu-title">@context.User.Identity?.Name</span>
+                    </div>
+                    <div class="header-menu-list">
+                        <button type="button" class="header-menu-row" @onclick="OpenUserSettingsAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.ManageAccounts" Size="Size.Small" />
+                            <span>User Settings</span>
+                        </button>
+                    </div>
+                    <form class="header-menu-footer-form" method="post" action="/api/auth/logout" onsubmit="window.showSubmitOverlay()">
                         <AntiforgeryToken />
-                        <MudButton ButtonType="ButtonType.Submit"
-                                   StartIcon="@Icons.Material.Filled.Logout"
-                                   FullWidth="true"
-                                   Variant="Variant.Text"
-                                   Color="Color.Error">
-                            Logout
-                        </MudButton>
+                        <button type="submit" class="header-menu-footer header-menu-footer-danger">
+                            <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
+                            <span>Logout</span>
+                        </button>
                     </form>
                 </div>
             </ChildContent>
@@ -42,6 +41,18 @@
 </AuthorizeView>
 
 @code {
+    private MudMenu? _menu;
+
+    private async Task OpenUserSettingsAsync()
+    {
+        if (_menu != null)
+        {
+            await _menu.CloseMenuAsync();
+        }
+
+        _navigationManager.NavigateTo(AppRoutes.UserSettings);
+    }
+
     private static string GetInitial(string? name)
     {
         return string.IsNullOrWhiteSpace(name)

@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Homewatch.Contracts.Constants;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homewatch.Infrastructure.Data.Entities
@@ -10,6 +11,6 @@ namespace Homewatch.Infrastructure.Data.Entities
         [ForeignKey(nameof(UserId))]
         public User User { get; set; } = null!;
 
-        public int NumberOfCamerasPerRowForLiveGrid { get; set; } = 4;
+        public int NumberOfCamerasPerRowForLiveGrid { get; set; } = UserSettingsDefaults.NumberOfCamerasPerRowForLiveGrid;
     }
 }

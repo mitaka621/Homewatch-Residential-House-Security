@@ -1,3 +1,4 @@
+@using Homewatch.Contracts.Constants
 @using Homewatch.Contracts.Dtos.UserDtos
 
 @inject IUserManagementService _userManagementService
@@ -7,9 +8,13 @@
 <MudDialog>
     <DialogContent>
         <MudStack Spacing="3">
-            <MudText Typo="Typo.body1">
-                Editing roles for <strong>@UserName</strong>
-            </MudText>
+            <MudTextField T="string"
+                          @bind-Value="_email"
+                          Label="Email"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          Immediate="true"
+                          Disabled="_isSubmitting" />
 
             <MudSelect T="Guid"
                        Label="Roles"
@@ -18,16 +23,20 @@
                        SelectedValuesChanged="OnSelectedRolesChanged"
                        MultiSelection="true"
                        ToStringFunc="@GetRoleName"
-                       Disabled="_isSubmitting">
+                       HelperText="@(IsSelf ? "You cannot change your own roles." : null)"
+                       Disabled="_isSubmitting || IsSelf">
                 @foreach (var role in _availableRoles)
                 {
                     <MudSelectItem T="Guid" Value="@role.Id">@role.Name</MudSelectItem>
                 }
             </MudSelect>
 
-            <MudAlert Severity="Severity.Info" Dense="true">
-                The user will be signed out and must log in again for changes to take effect.
-            </MudAlert>
+            @if (!IsSelf)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Changing roles signs the user out.
+                </MudAlert>
+            }
 
             @if (!string.IsNullOrEmpty(_submitError))
             {
@@ -40,7 +49,7 @@
         <MudButton Color="Color.Primary"
                    Variant="Variant.Filled"
                    OnClick="SubmitAsync"
-                   Disabled="_isSubmitting || !_selectedRoleIds.Any()">
+                   Disabled="_isSubmitting || !HasChanges || string.IsNullOrWhiteSpace(_email) || !_selectedRoleIds.Any()">
             @if (_isSubmitting)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
@@ -62,14 +71,26 @@
 
     [Parameter] public string UserName { get; set; } = string.Empty;
 
+    [Parameter] public string InitialEmail { get; set; } = string.Empty;
+
     [Parameter] public List<Guid> InitialRoleIds { get; set; } = new();
 
     [Parameter] public Guid CurrentUserId { get; set; }
 
     private List<RoleDto> _availableRoles = new();
     private IEnumerable<Guid> _selectedRoleIds = Enumerable.Empty<Guid>();
+    private string _email = string.Empty;
+    private string _savedEmail = string.Empty;
     private string? _submitError;
     private bool _isSubmitting;
+
+    private bool IsSelf => UserId == CurrentUserId;
+
+    private bool IsEmailChanged => !string.Equals(_email.Trim(), _savedEmail, StringComparison.Ordinal);
+
+    private bool AreRolesChanged => !IsSelf && !_selectedRoleIds.ToHashSet().SetEquals(InitialRoleIds);
+
+    private bool HasChanges => IsEmailChanged || AreRolesChanged;
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,6 +102,8 @@
 
         _availableRoles = await _userManagementService.GetAllRolesAsync();
         _selectedRoleIds = InitialRoleIds.ToList();
+        _email = InitialEmail;
+        _savedEmail = InitialEmail;
     }
 
     private void OnSelectedRolesChanged(IEnumerable<Guid> selected)
@@ -112,21 +135,18 @@
 
         try
         {
-            var result = await _userManagementService.UpdateUserRolesAsync(UserId, _selectedRoleIds.ToList(), CurrentUserId);
-
-            switch (result)
+            if (IsEmailChanged && !await UpdateEmailAsync())
             {
-                case UpdateUserRolesResult.Success:
-                    _snackbar.Add($"Roles for '{UserName}' updated.", Severity.Success);
-                    MudDialog?.Close(DialogResult.Ok(true));
-                    break;
-                case UpdateUserRolesResult.CannotEditSelf:
-                    _submitError = "You cannot edit your own roles.";
-                    break;
-                case UpdateUserRolesResult.UserNotFound:
-                    _submitError = "User no longer exists.";
-                    break;
+                return;
             }
+
+            if (AreRolesChanged && !await UpdateRolesAsync())
+            {
+                return;
+            }
+
+            _snackbar.Add($"User '{UserName}' updated.", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
         }
         catch (Exception ex)
         {
@@ -136,6 +156,40 @@
         {
             _isSubmitting = false;
         }
+    }
+
+    private async Task<bool> UpdateEmailAsync()
+    {
+        var result = await _userManagementService.UpdateUserEmailAsync(UserId, _email);
+
+        _submitError = result switch
+        {
+            UpdateUserEmailResult.InvalidEmail => $"Enter a valid email address of at most {UserConstraints.EmailMaximumLength} characters.",
+            UpdateUserEmailResult.EmailInUse => "Another user already has this email address.",
+            UpdateUserEmailResult.UserNotFound => "User no longer exists.",
+            _ => null
+        };
+
+        if (result == UpdateUserEmailResult.Success)
+        {
+            _savedEmail = _email.Trim();
+        }
+
+        return result == UpdateUserEmailResult.Success;
+    }
+
+    private async Task<bool> UpdateRolesAsync()
+    {
+        var result = await _userManagementService.UpdateUserRolesAsync(UserId, _selectedRoleIds.ToList(), CurrentUserId);
+
+        _submitError = result switch
+        {
+            UpdateUserRolesResult.CannotEditSelf => "You cannot edit your own roles.",
+            UpdateUserRolesResult.UserNotFound => "User no longer exists.",
+            _ => null
+        };
+
+        return result == UpdateUserRolesResult.Success;
     }
 
     private void Cancel()

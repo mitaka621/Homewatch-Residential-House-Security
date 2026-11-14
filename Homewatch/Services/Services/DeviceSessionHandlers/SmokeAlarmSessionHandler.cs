@@ -41,6 +41,14 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
             using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             idleCts.CancelAfter(TimeSpan.FromSeconds(_maxSessionDurationSeconds));
 
+            var deviceConfig = await _smokeAlarmDetectorConfigurationRepository.GetSmokeAlarmConfigurationAsync(device.Id);
+
+            if (deviceConfig == null)
+            {
+                _logger.LogCritical("Smoke alarm configuration not found. Terminating the connection. DeviceId: {DeviceId}", device.Id);
+                return;
+            }
+
             byte[] plaintext;
             try
             {
@@ -93,9 +101,9 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
                 ChargeSenseVoltageThreashold = BinaryPrimitives.ReadUInt16BigEndian(payloadByteArray.Slice(13, 2)) / 1000.0,
             };
 
-            await _smokeAlarmDetectorManagerService.IngestAsync(payload);
+            await _smokeAlarmDetectorManagerService.IngestAsync(payload, deviceConfig);
 
-            await EnqueueOutOfSyncConfigAsync(device.Id, payload);
+            await EnqueueOutOfSyncConfigAsync(device.Id, payload, deviceConfig);
 
             await SendQueuedCommandsAsync(secureChannel, device.Id, cancellationToken);
 
@@ -117,15 +125,8 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
             return GetOrCreateCommandChannel(deviceId).Writer.TryWrite(new OutboundDeviceMessageDto { Command = DeviceCommand.SaveNewConfig, Config = config });
         }
 
-        private async Task EnqueueOutOfSyncConfigAsync(Guid deviceId, SmokeAlarmDetectorPayloadDto payload)
+        private async Task EnqueueOutOfSyncConfigAsync(Guid deviceId, SmokeAlarmDetectorPayloadDto payload, SmokeAlarmConfigurationDto configuration)
         {
-            var configuration = await _smokeAlarmDetectorConfigurationRepository.GetSmokeAlarmConfigurationAsync(deviceId);
-
-            if (configuration is null)
-            {
-                return;
-            }
-
             if (Math.Abs(configuration.ChargeSenseVoltageThreashold - payload.ChargeSenseVoltageThreashold) <= _chargeSenseThresholdToleranceVolts)
             {
                 return;

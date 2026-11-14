@@ -1,4 +1,5 @@
-﻿using MudBlazor;
+﻿using Homewatch.Contracts.Constants;
+using MudBlazor;
 using System.ComponentModel.DataAnnotations;
 
 namespace Homewatch.Contracts.Models
@@ -13,14 +14,14 @@ namespace Homewatch.Contracts.Models
 
         [Range(1, 99, ErrorMessage = "Minimum battery SoC for alert must be between 1 and 99.")]
         [Label("Minimum Battery SoC for Alert")]
-        public double MinBatterySOCForAlert { get; set; } = 10;
+        public double MinBatterySOCForAlert { get; set; } = SmokeAlarmConfigurationDefaults.MinBatterySOCForAlert;
 
         [Range(1, 5.5, ErrorMessage = "ChargeSenseVoltageThreashold must be between 1 and 5.5.")]
         [Label("Charge Sense Voltage Threashold")]
-        public double ChargeSenseVoltageThreashold { get; set; }
+        public double ChargeSenseVoltageThreashold { get; set; } = SmokeAlarmConfigurationDefaults.ChargeSenseVoltageThreashold;
 
         [Range(4, 5, ErrorMessage = "MaxVoltageOverchargeWarning must be between 4 and 5.")]
         [Label("Max battery voltage for overcharge warning")]
-        public double MaxVoltageOverchargeWarning { get; set; }
+        public double MaxVoltageOverchargeWarning { get; set; } = SmokeAlarmConfigurationDefaults.MaxVoltageOverchargeWarning;
     }
 }

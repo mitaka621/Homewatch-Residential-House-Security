@@ -43,7 +43,7 @@
                             <MudIcon Icon="@GetBatteryIcon()" Color="Color.Primary" />
                             <div class="smoke-alarm-stat-text">
                                 <MudText Typo="Typo.h6" Class="smoke-alarm-stat-value">@_latestSmokeAlarmData.BatterySOCPercent.ToString("0.#") %</MudText>
-                                <MudText Typo="Typo.caption" Class="mud-text-secondary">Battery</MudText>
+                                <MudText Typo="Typo.caption" Class="@(IsBatteryLow() ? "mud-warning-text" : "mud-text-secondary")">@GetBatteryCaption()</MudText>
                                 <MudProgressLinear Value="@_latestSmokeAlarmData.BatterySOCPercent"
                                                    Color="@(IsBatteryLow() ? Color.Warning : Color.Success)"
                                                    Rounded="true"
@@ -59,15 +59,16 @@
                 <MudTooltip Placement="Placement.Top" Inline="false">
                     <ChildContent>
                         <div class="smoke-alarm-stat">
-                                <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Primary" />
+                                <MudIcon Icon="@(IsOvercharged() ? Icons.Material.Filled.BatteryAlert : Icons.Material.Filled.Bolt)" Color="@(IsOvercharged() ? Color.Error : Color.Primary)" />
                                 <div class="smoke-alarm-stat-text" >
-                                    <MudText Typo="Typo.h6" Class="smoke-alarm-stat-value">@_latestSmokeAlarmData.BatteryVoltage.ToString("0.###") V</MudText>
-                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Battery Voltage</MudText>
+                                    <MudText Typo="Typo.h6" Class="smoke-alarm-stat-value" Color="@(IsOvercharged() ? Color.Error : Color.Inherit)">@_latestSmokeAlarmData.BatteryVoltage.ToString("0.###") V</MudText>
+                                    <MudText Typo="Typo.caption" Class="@(IsOvercharged() ? "mud-error-text" : "mud-text-secondary")">@(IsOvercharged() ? "Overcharge" : "Battery Voltage")</MudText>
                                 </div>
                          </div>
                     </ChildContent>
                     <TooltipContent>
                         <MudText Typo="Typo.body2">Latest reported battery voltage</MudText>
+                        <MudText Typo="Typo.body2">Overcharge limit: @_configurationModel.MaxVoltageOverchargeWarning.ToString("0.###") V</MudText>
                     </TooltipContent>
                 </MudTooltip>
                 <MudTooltip Placement="Placement.Top" Inline="false">
@@ -195,27 +196,78 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private string GetStatusDisplayColor() => _latestSmokeAlarmData.Event switch
+    private string GetStatusDisplayColor()
     {
-        SmokeAlarmEvent.FireAlarm => "var(--mud-palette-error)",
-        SmokeAlarmEvent.AlarmLowBatteryChirp => "var(--mud-palette-warning)",
-        SmokeAlarmEvent.BatteryCharging => "var(--mud-palette-primary)",
-        SmokeAlarmEvent.BatteryWelfare => IsBatteryLow() ? "var(--mud-palette-warning)" : "var(--mud-palette-success)",
-        _ => "var(--mud-palette-success)"
-    };
+        if (_latestSmokeAlarmData.Event == SmokeAlarmEvent.FireAlarm || IsOvercharged())
+        {
+            return "var(--mud-palette-error)";
+        }
 
-    private string GetStatusDisplayDescription() => _latestSmokeAlarmData.Event switch
+        if (_latestSmokeAlarmData.Event == SmokeAlarmEvent.AlarmLowBatteryChirp || IsBatteryLow())
+        {
+            return "var(--mud-palette-warning)";
+        }
+
+        return IsBatteryCharging() ? "var(--mud-palette-primary)" : "var(--mud-palette-success)";
+    }
+
+    private string GetStatusDisplayDescription()
     {
-        SmokeAlarmEvent.FireAlarm => "Smoke alarm is active!",
-        SmokeAlarmEvent.AlarmLowBatteryChirp => "Change battery of the smoke alarm",
-        SmokeAlarmEvent.BatteryCharging => "Smoke alarm detector is charging",
-        SmokeAlarmEvent.BatteryWelfare => IsBatteryLow() ? "Smoke alarm detector needs charging" : "Smoke alarm not active",
-        _ => "Smoke alarm not active"
-    };
+        if (_latestSmokeAlarmData.Event == SmokeAlarmEvent.FireAlarm)
+        {
+            return "Smoke alarm is active!";
+        }
+
+        if (IsOvercharged())
+        {
+            return "Overcharge! Disconnect the charger immediately";
+        }
+
+        if (_latestSmokeAlarmData.Event == SmokeAlarmEvent.AlarmLowBatteryChirp)
+        {
+            return "Change battery of the smoke alarm";
+        }
+
+        if (IsBatteryLow())
+        {
+            return "Smoke alarm detector needs charging";
+        }
+
+        return IsBatteryCharging() ? "Smoke alarm detector is charging" : "Smoke alarm not active";
+    }
+
+    private string GetBatteryCaption()
+    {
+        if (IsBatteryLow())
+        {
+            return "Low Battery";
+        }
+
+        return IsBatteryCharging() ? "Charging" : "Battery";
+    }
+
+    private bool HasTelemetry()
+    {
+        return _latestSmokeAlarmData.LoggedTimeUTC != default;
+    }
 
     private bool IsBatteryLow()
     {
-        return _latestSmokeAlarmData.BatterySOCPercent < _configurationModel.MinBatterySOCForAlert;
+        return HasTelemetry()
+            && !_latestSmokeAlarmData.IsCharging
+            && _latestSmokeAlarmData.BatterySOCPercent <= _configurationModel.MinBatterySOCForAlert;
+    }
+
+    private bool IsBatteryCharging()
+    {
+        return HasTelemetry()
+            && _latestSmokeAlarmData.IsCharging
+            && _latestSmokeAlarmData.BatterySOCPercent < 100;
+    }
+
+    private bool IsOvercharged()
+    {
+        return HasTelemetry() && _latestSmokeAlarmData.BatteryVoltage > _configurationModel.MaxVoltageOverchargeWarning;
     }
 
     private string GetBatteryIcon()
