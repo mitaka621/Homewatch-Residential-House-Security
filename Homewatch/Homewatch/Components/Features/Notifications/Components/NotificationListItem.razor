@@ -8,9 +8,9 @@
         <MudIcon Icon="@Notification.Icon" Color="@Notification.IconColor" Size="Size.Small" />
     </div>
     <div class="header-menu-card-body">
-        <div class="header-menu-card-heading">
-            <span class="header-menu-card-title">@Notification.Name</span>
-            <MudTooltip Text="@GetFullDate()">
+        <div class="header-menu-card-heading header-menu-card-heading-multiline">
+            <span class="header-menu-card-title header-menu-card-title-multiline">@Notification.Name</span>
+            <MudTooltip Text="@GetFullDate()" RootClass="header-menu-card-meta-root">
                 <span class="header-menu-card-meta">@GetRelativeTime()</span>
             </MudTooltip>
         </div>

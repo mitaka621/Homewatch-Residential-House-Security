@@ -671,6 +671,23 @@ a,
   cursor: default;
 }
 
+.header-menu-card-heading-multiline {
+  align-items: flex-start;
+}
+
+.header-menu-card-title-multiline {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.header-menu-card-meta-root {
+  flex: 0 0 auto;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
 .header-menu-card-text {
   display: -webkit-box;
   margin-top: 2px;
