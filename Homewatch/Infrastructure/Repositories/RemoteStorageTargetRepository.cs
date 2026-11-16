@@ -115,5 +115,23 @@ namespace Homewatch.Infrastructure.Repositories
                 .SetProperty(y => y.SharePath, target.SharePath)
                 .SetProperty(y => y.Retention, target.Retention));
         }
+
+        public async Task SetSyncEnabledAsync(Guid targetId, bool isSyncEnabled)
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+
+            await db.RemoteStorageTargets
+                .Where(x => x.Id == targetId)
+                .ExecuteUpdateAsync(x => x.SetProperty(y => y.IsSyncEnabled, isSyncEnabled));
+        }
+
+        public async Task<bool> DeleteTargetAsync(Guid targetId)
+        {
+            await using var db = await _dbContextFactory.CreateDbContextAsync();
+
+            return await db.RemoteStorageTargets
+                .Where(x => x.Id == targetId)
+                .ExecuteDeleteAsync() > 0;
+        }
     }
 }

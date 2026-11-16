@@ -62,7 +62,8 @@ namespace Homewatch.Infrastructure.Data
                     Id = SystemSettingsId,
                     EncodedVideoRetention = Contracts.Constants.SystemSettingsDefaults.EncodedVideoRetention,
                     CameraChunkRetention = Contracts.Constants.SystemSettingsDefaults.CameraChunkRetention,
-                    DismissedNotificationRetention = Contracts.Constants.SystemSettingsDefaults.DismissedNotificationRetention
+                    DismissedNotificationRetention = Contracts.Constants.SystemSettingsDefaults.DismissedNotificationRetention,
+                    ParallelCopiesPerShare = Contracts.Constants.SystemSettingsDefaults.ParallelCopiesPerShare
                 });
 
             modelBuilder.Entity<Role>().HasData(

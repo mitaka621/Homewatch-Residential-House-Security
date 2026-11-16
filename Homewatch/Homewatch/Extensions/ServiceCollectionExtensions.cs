@@ -130,6 +130,8 @@ namespace Homewatch.Extensions
 
             services.AddSingleton<RemoteStorageReplicationService>();
             services.AddSingleton<IChunkReplicationQueue>(sp => sp.GetRequiredService<RemoteStorageReplicationService>());
+            services.AddSingleton<IRemoteStorageSyncMonitor>(sp => sp.GetRequiredService<RemoteStorageReplicationService>());
+            services.AddSingleton<IRemoteStorageSyncController>(sp => sp.GetRequiredService<RemoteStorageReplicationService>());
             services.AddHostedService(sp => sp.GetRequiredService<RemoteStorageReplicationService>());
 
             return services;

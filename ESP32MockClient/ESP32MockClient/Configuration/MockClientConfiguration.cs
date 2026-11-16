@@ -16,6 +16,4 @@ public static class MockClientConfiguration
     public static string FfmpegPath { get; } = "ffmpeg";
 
     public static int FrameDelayMs => 1000 / TargetFps;
-
-    public static int MaxFailedConnectionAttempts { get; } = 50;
 }

@@ -1,15 +1,22 @@
 @attribute [Route(AppRoutes.RetentionSettings)]
 @rendermode InteractiveServer
+@implements IDisposable
 
 @using Homewatch.Contracts.Constants
+@using Homewatch.Contracts.Dtos.RemoteStorageDtos
 @using Homewatch.Contracts.Dtos.SystemSettingsDtos
 @using Microsoft.AspNetCore.Authorization
+@using System.Net
 
 @attribute [Authorize(Roles = Roles.Admin)]
 
 @inject ISystemSettingsService _systemSettingsService
 @inject IRemoteStorageService _remoteStorageService
+@inject IRemoteStorageSyncMonitor _remoteStorageSyncMonitor
+@inject IRemoteStorageSyncController _remoteStorageSyncController
+@inject IDeviceService _deviceService
 @inject ISnackbar _snackbar
+@inject IDialogService _dialogService
 @inject IAdminAuthorizationGuard _adminAuthorizationGuard
 
 <PageTitle>Video Retention - Homewatch</PageTitle>
@@ -29,7 +36,7 @@
                         <MudText Typo="Typo.h6">Remote Storage (SMB)</MudText>
                     </MudStack>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        Recorded camera chunks are copied to every server with video sync enabled. Local chunks are not removed by retention until they are copied. Saved changes apply within the next few recorded chunks.
+                        Recorded camera chunks are copied to every server with video sync enabled. Local chunks are not removed by retention until they are copied. Saved changes apply right away.
                     </MudText>
                 </CardHeaderContent>
                 <CardHeaderActions>
@@ -44,6 +51,15 @@
             </MudCardHeader>
             <MudCardContent>
                 <MudStack Spacing="3">
+                    <MudNumericField T="int"
+                                     Value="_settings.ParallelCopiesPerShare"
+                                     ValueChanged="OnParallelCopiesPerShareChangedAsync"
+                                     Immediate="true"
+                                     Label="Parallel copies per share"
+                                     Min="_minimumParallelCopies"
+                                     Max="_maximumParallelCopies"
+                                     HelperText="Chunks copied to each share at the same time. Saved automatically. Raise it only if the upload speed of the server's network has room to spare, so the copies do not use up the whole upload." />
+
                     @if (_targets.Count == 0)
                     {
                         <MudText Typo="Typo.body2" Color="Color.Secondary">No server connections. Use + to add one.</MudText>
@@ -104,7 +120,7 @@
                                     <MudButton Variant="Variant.Outlined"
                                                Color="Color.Error"
                                                StartIcon="@Icons.Material.Filled.Delete"
-                                               OnClick="() => RemoveTarget(target)"
+                                               OnClick="() => RemoveTargetAsync(target)"
                                                Disabled="target.IsVerifying">
                                         <MudText>Remove</MudText>
                                     </MudButton>
@@ -118,6 +134,66 @@
                                           Severity="Severity.Error">
                                     @target.VerificationMessage
                                 </MudAlert>
+                            }
+
+                            @if (target.Id != null && target.IsSyncEnabled && _syncStatuses.TryGetValue(target.Id.Value, out var syncStatus))
+                            {
+                                var syncAlert = GetSyncAlert(syncStatus);
+
+                                <MudStack Class="mt-3" Spacing="1">
+                                    <MudStack Row Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.body2">Sync load</MudText>
+                                        <MudText Typo="Typo.body2">@(syncStatus.State == RemoteStorageSyncState.Measuring ? "Measuring" : $"{syncStatus.LoadPercent:0}%")</MudText>
+                                    </MudStack>
+                                    <MudProgressLinear Value="@(syncStatus.State == RemoteStorageSyncState.Measuring ? 0 : syncStatus.LoadPercent)" Color="GetLoadColor(syncStatus)" Rounded="true" Size="Size.Medium" />
+                                    @if (syncStatus.State == RemoteStorageSyncState.Measuring)
+                                    {
+                                        <MudText Typo="Typo.body2">Measuring the sync load during the first minute.</MudText>
+                                    }
+                                    else
+                                    {
+                                        <ul class="sync-status-list">
+                                            <li>
+                                                <MudText Typo="Typo.body2" Inline="true">Cameras record: </MudText>
+                                                <MudText Typo="Typo.body2" Inline="true" Color="Color.Secondary">@FormatRate(syncStatus.RecordingMegabytesPerSecond)</MudText>
+                                            </li>
+                                            <li>
+                                                <MudText Typo="Typo.body2" Inline="true">Reaches the share: </MudText>
+                                                <MudText Typo="Typo.body2" Inline="true" Color="Color.Secondary">@FormatRate(syncStatus.UploadMegabytesPerSecond)</MudText>
+                                            </li>
+                                            <li>
+                                                <MudText Typo="Typo.body2" Inline="true">Chunks waiting: </MudText>
+                                                <MudText Typo="Typo.body2" Inline="true" Color="Color.Secondary">@syncStatus.PendingChunkCount</MudText>
+                                            </li>
+                                            <li>
+                                                <MudText Typo="Typo.body2" Inline="true">Parallel copies: </MudText>
+                                                <MudText Typo="Typo.body2" Inline="true" Color="Color.Secondary">@syncStatus.ParallelCopies</MudText>
+                                            </li>
+                                            @if (syncStatus.DelayAfterRecording != null)
+                                            {
+                                                <li>
+                                                    <MudText Typo="Typo.body2" Inline="true">Footage reaches the share after recording: </MudText>
+                                                    <MudText Typo="Typo.body2" Inline="true" Color="Color.Secondary">@FormatDuration(syncStatus.DelayAfterRecording.Value)</MudText>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+
+                                    @if (syncAlert != null)
+                                    {
+                                        <MudAlert Dense="true" Severity="syncAlert.Value.Severity">@syncAlert.Value.Message</MudAlert>
+                                    }
+                                </MudStack>
+                            }
+                            else if (target.Id != null && target.IsSyncEnabled)
+                            {
+                                <MudStack Class="mt-3" Spacing="1">
+                                    <MudStack Row Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.body2">Sync load</MudText>
+                                        <MudText Typo="Typo.body2">Starting</MudText>
+                                    </MudStack>
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Rounded="true" Size="Size.Medium" />
+                                </MudStack>
                             }
                         </MudPaper>
                     }
@@ -185,14 +261,187 @@
     private List<RemoteStorageTargetModel> _targets = new();
     private bool _isSaving = false;
     private bool _isSavingRemoteStorage = false;
+    private CancellationTokenSource? _parallelCopiesSaveDelayCancellationTokenSource;
+    private Dictionary<Guid, RemoteStorageSyncStatusDto> _syncStatuses = new();
+    private List<CameraRecordingRateDto> _cameraRecordingRates = new();
+    private Dictionary<Guid, string> _cameraNames = new();
+
+    private const int _camerasToSuggest = 3;
+    private const int _minimumParallelCopies = 1;
+    private const int _maximumParallelCopies = 20;
+    private const double _bytesPerMegabyte = 1024 * 1024;
+    private const double _bitsPerMegabit = 1_000_000;
+
+    private readonly TimeSpan _syncStatusRefreshInterval = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _parallelCopiesSaveDelay = TimeSpan.FromSeconds(1);
+    private readonly CancellationTokenSource _refreshCancellationTokenSource = new();
 
     protected override async Task OnInitializedAsync()
     {
         _settings = await _systemSettingsService.GetSystemSettingsAsync();
         _targets = await _remoteStorageService.GetTargetsAsync();
+        _cameraNames = (await _deviceService.GetAllCameraNameAndIdAsync()).ToDictionary(x => x.Id, x => x.Name);
 
         if (_targets.Count == 0)
             AddTarget();
+
+        RefreshSyncStatuses();
+
+        _ = RefreshSyncStatusesPeriodicallyAsync(_refreshCancellationTokenSource.Token);
+    }
+
+    public void Dispose()
+    {
+        _refreshCancellationTokenSource.Cancel();
+        _refreshCancellationTokenSource.Dispose();
+    }
+
+    private async Task RefreshSyncStatusesPeriodicallyAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(_syncStatusRefreshInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(() =>
+                {
+                    RefreshSyncStatuses();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void RefreshSyncStatuses()
+    {
+        _syncStatuses = _targets
+            .Where(x => x.Id != null)
+            .Select(x => _remoteStorageSyncMonitor.GetSyncStatus(x.Id!.Value))
+            .OfType<RemoteStorageSyncStatusDto>()
+            .ToDictionary(x => x.TargetId);
+
+        _cameraRecordingRates = _remoteStorageSyncMonitor.GetCameraRecordingRates();
+    }
+
+    private Color GetLoadColor(RemoteStorageSyncStatusDto syncStatus)
+    {
+        return syncStatus.State switch
+        {
+            RemoteStorageSyncState.Overloaded or RemoteStorageSyncState.Unreachable => Color.Error,
+            RemoteStorageSyncState.NearCapacity => Color.Warning,
+            RemoteStorageSyncState.CatchingUp => Color.Info,
+            _ => Color.Success
+        };
+    }
+
+    private async Task OnParallelCopiesPerShareChangedAsync(int parallelCopiesPerShare)
+    {
+        _settings.ParallelCopiesPerShare = Math.Clamp(parallelCopiesPerShare, _minimumParallelCopies, _maximumParallelCopies);
+
+        _parallelCopiesSaveDelayCancellationTokenSource?.Cancel();
+        _parallelCopiesSaveDelayCancellationTokenSource?.Dispose();
+        _parallelCopiesSaveDelayCancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            await Task.Delay(_parallelCopiesSaveDelay, _parallelCopiesSaveDelayCancellationTokenSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        await SaveParallelCopiesPerShareAsync();
+    }
+
+    private async Task SaveParallelCopiesPerShareAsync()
+    {
+        if (!await _adminAuthorizationGuard.TryAuthorizeAdminAsync())
+        {
+            return;
+        }
+
+        var latestSettings = await _systemSettingsService.GetSystemSettingsAsync();
+
+        if (latestSettings.ParallelCopiesPerShare == _settings.ParallelCopiesPerShare)
+        {
+            return;
+        }
+
+        latestSettings.ParallelCopiesPerShare = _settings.ParallelCopiesPerShare;
+
+        if (!await _systemSettingsService.UpdateSystemSettingsAsync(latestSettings))
+        {
+            _snackbar.Add("Failed to save parallel copies.", Severity.Error);
+
+            return;
+        }
+
+        _remoteStorageSyncController.RequestRefresh();
+        _snackbar.Add($"Parallel copies per share set to {_settings.ParallelCopiesPerShare}.", Severity.Success);
+    }
+
+    private (Severity Severity, string Message)? GetSyncAlert(RemoteStorageSyncStatusDto syncStatus)
+    {
+        return syncStatus.State switch
+        {
+            RemoteStorageSyncState.NearCapacity => (Severity.Warning,
+                $"The connection to this share is close to its limit. Adding cameras or raising their resolution can make the sync fall behind. {DescribeBusiestCameras()}"),
+            RemoteStorageSyncState.Overloaded => (Severity.Error,
+                $"The cameras record more video than this share receives ({ToMegabitsPerSecond(syncStatus.UploadMegabytesPerSecond):0.0} Mbit/s), so the sync is falling behind. "
+                + $"First check the upload speed of the server's network. If it is clearly higher than {ToMegabitsPerSecond(syncStatus.UploadMegabytesPerSecond):0.0} Mbit/s, raise Parallel copies per share (now {syncStatus.ParallelCopies}), keeping enough upload free for remote viewing. "
+                + $"If it is about the same, the network is full, so lower the resolution or quality of the cameras that record the most. {DescribeBusiestCameras()}"),
+            RemoteStorageSyncState.CatchingUp => (Severity.Info,
+                syncStatus.CatchUpTimeRemaining == null
+                    ? $"Catching up on {syncStatus.PendingChunkCount} chunks."
+                    : $"Catching up on {syncStatus.PendingChunkCount} chunks, about {FormatDuration(syncStatus.CatchUpTimeRemaining.Value)} left."),
+            RemoteStorageSyncState.Unreachable => (Severity.Error,
+                $"The share cannot be reached. {syncStatus.PendingChunkCount} chunks are waiting and will be copied when it is back."),
+            _ => null
+        };
+    }
+
+    private string DescribeBusiestCameras()
+    {
+        var busiestCameras = _cameraRecordingRates
+            .Take(_camerasToSuggest)
+            .Select(x => $"{_cameraNames.GetValueOrDefault(x.DeviceId, "Unknown camera")} {x.MegabytesPerSecond:0.00} MB/s")
+            .ToList();
+
+        return busiestCameras.Count == 0
+            ? string.Empty
+            : $"Cameras recording the most: {string.Join(", ", busiestCameras)}.";
+    }
+
+    private string FormatRate(double megabytesPerSecond)
+    {
+        return $"{megabytesPerSecond:0.00} MB/s ({ToMegabitsPerSecond(megabytesPerSecond):0.0} Mbit/s)";
+    }
+
+    private double ToMegabitsPerSecond(double megabytesPerSecond)
+    {
+        return megabytesPerSecond * _bytesPerMegabyte * 8 / _bitsPerMegabit;
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalSeconds < 1)
+        {
+            return $"{Math.Max(duration.TotalMilliseconds, 0):0} ms";
+        }
+
+        if (duration.TotalMinutes < 1)
+        {
+            return $"{duration.TotalSeconds:0.0} s";
+        }
+
+        return duration.TotalHours < 1
+            ? $"{duration.TotalMinutes:0} min"
+            : $"{duration.TotalHours:0.0} h";
     }
 
     private void AddTarget()
@@ -200,9 +449,48 @@
         _targets.Add(new RemoteStorageTargetModel());
     }
 
-    private void RemoveTarget(RemoteStorageTargetModel target)
+    private async Task RemoveTargetAsync(RemoteStorageTargetModel target)
     {
-        _targets.Remove(target);
+        if (target.Id == null)
+        {
+            _targets.Remove(target);
+
+            return;
+        }
+
+        var isConfirmed = await _dialogService.ShowMessageBox(
+            "Remove Share",
+            (MarkupString)$"Are you sure you want to remove <b>{WebUtility.HtmlEncode(target.SharePath)}</b>?<br /><br /><span style=\"color: var(--mud-palette-error);\">Video sync to this share stops. Footage already copied stays on the share, but it is no longer deleted by retention or played back from there.</span>",
+            yesText: "Remove",
+            cancelText: "Cancel");
+
+        if (isConfirmed != true || !await _adminAuthorizationGuard.TryAuthorizeAdminAsync())
+        {
+            return;
+        }
+
+        target.IsVerifying = true;
+
+        try
+        {
+            var result = await _remoteStorageService.DeleteTargetAsync(target.Id.Value);
+
+            if (!result.Succeeded)
+            {
+                _snackbar.Add(result.Message, Severity.Error);
+
+                return;
+            }
+
+            _snackbar.Add(result.Message, Severity.Success);
+            _targets = await _remoteStorageService.GetTargetsAsync();
+
+            RefreshSyncStatuses();
+        }
+        finally
+        {
+            target.IsVerifying = false;
+        }
     }
 
     private async Task SaveAndVerifyTargetAsync(RemoteStorageTargetModel target)

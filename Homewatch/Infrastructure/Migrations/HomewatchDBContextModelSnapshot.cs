@@ -608,6 +608,9 @@ namespace Homewatch.Infrastructure.Migrations
                     b.Property<int>("EncodedVideoRetention")
                         .HasColumnType("int");
 
+                    b.Property<int>("ParallelCopiesPerShare")
+                        .HasColumnType("int");
+
                     b.Property<double>("SecurityMaxHumidityPercent")
                         .HasColumnType("float");
 
@@ -628,6 +631,7 @@ namespace Homewatch.Infrastructure.Migrations
                             CameraChunkRetention = 3,
                             DismissedNotificationRetention = 8,
                             EncodedVideoRetention = 5,
+                            ParallelCopiesPerShare = 5,
                             SecurityMaxHumidityPercent = 70.0,
                             SecurityMaxTemperatureC = 90.0,
                             SecurityMinFps = 4

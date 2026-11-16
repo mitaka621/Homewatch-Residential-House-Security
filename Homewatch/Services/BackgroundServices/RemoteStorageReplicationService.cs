@@ -5,28 +5,41 @@ using Homewatch.Core.Services.RemoteStorage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 namespace Homewatch.Core.BackgroundServices
 {
-    public class RemoteStorageReplicationService : BackgroundService, IChunkReplicationQueue
+    public class RemoteStorageReplicationService : BackgroundService, IChunkReplicationQueue, IRemoteStorageSyncMonitor, IRemoteStorageSyncController
     {
         private readonly IRemoteStorageTargetRepository _remoteStorageTargetRepository;
         private readonly IVideoChunkRepository _videoChunkRepository;
         private readonly ISmbConnectionService _smbConnectionService;
         private readonly IStorageLocationService _storageLocationService;
+        private readonly INotificationsService _notificationsService;
+        private readonly ISystemSettingsService _systemSettingsService;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ILogger<RemoteStorageReplicationService> _logger;
         private readonly IVideoChunkReplicationRepository _videoChunkReplicationRepository;
         private readonly int _settingsCheckIntervalInChunks;
         private readonly TimeSpan _retryDelay;
         private readonly TimeSpan _workerStopTimeout = TimeSpan.FromSeconds(5);
-        private readonly Dictionary<Guid, RemoteStorageTargetWorker> _workers = new();
+        private readonly ConcurrentDictionary<Guid, RemoteStorageTargetWorker> _workers = new();
+        private readonly VideoRecordingRateTracker _recordingRateTracker = new();
+        private readonly SemaphoreSlim _refreshLock = new(1, 1);
+        private readonly Channel<bool> _refreshRequests = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite
+        });
+
+        private int _parallelCopiesPerShare;
 
         public RemoteStorageReplicationService(
             IRemoteStorageTargetRepository remoteStorageTargetRepository,
             ISmbConnectionService smbConnectionService,
             IStorageLocationService storageLocationService,
+            INotificationsService notificationsService,
+            ISystemSettingsService systemSettingsService,
             IConfiguration configuration,
             ILoggerFactory loggerFactory,
             ILogger<RemoteStorageReplicationService> logger,
@@ -36,6 +49,8 @@ namespace Homewatch.Core.BackgroundServices
             _remoteStorageTargetRepository = remoteStorageTargetRepository;
             _smbConnectionService = smbConnectionService;
             _storageLocationService = storageLocationService;
+            _notificationsService = notificationsService;
+            _systemSettingsService = systemSettingsService;
             _loggerFactory = loggerFactory;
             _logger = logger;
             _videoChunkRepository = videoChunkRepository;
@@ -57,16 +72,53 @@ namespace Homewatch.Core.BackgroundServices
             _channel.Writer.TryWrite(item);
         }
 
+        public RemoteStorageSyncStatusDto? GetSyncStatus(Guid targetId)
+        {
+            return _workers.TryGetValue(targetId, out var worker)
+                ? worker.GetSyncStatus()
+                : null;
+        }
+
+        public List<CameraRecordingRateDto> GetCameraRecordingRates()
+        {
+            return _recordingRateTracker.GetCameraRecordingRates();
+        }
+
+        public void RequestRefresh()
+        {
+            _refreshRequests.Writer.TryWrite(true);
+        }
+
+        public async Task StopSyncAsync(Guid targetId)
+        {
+            await _refreshLock.WaitAsync();
+
+            try
+            {
+                if (_workers.TryGetValue(targetId, out var worker))
+                {
+                    await StopWorkerAsync(worker);
+                }
+            }
+            finally
+            {
+                _refreshLock.Release();
+            }
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             await RefreshTargetsAsync(stoppingToken);
 
+            var refreshRequestsTask = ProcessRefreshRequestsAsync(stoppingToken);
             var savedChunksSinceLastCheck = 0;
 
             try
             {
                 await foreach (var item in _channel.Reader.ReadAllAsync(stoppingToken))
                 {
+                    RecordRecordedChunk(item);
+
                     savedChunksSinceLastCheck++;
 
                     if (savedChunksSinceLastCheck >= _settingsCheckIntervalInChunks)
@@ -86,6 +138,8 @@ namespace Homewatch.Core.BackgroundServices
             }
             finally
             {
+                await refreshRequestsTask;
+
                 foreach (var worker in _workers.Values)
                 {
                     await worker.StopAsync(_workerStopTimeout);
@@ -95,33 +149,64 @@ namespace Homewatch.Core.BackgroundServices
             }
         }
 
+        private async Task ProcessRefreshRequestsAsync(CancellationToken stoppingToken)
+        {
+            try
+            {
+                await foreach (var _ in _refreshRequests.Reader.ReadAllAsync(stoppingToken))
+                {
+                    await RefreshTargetsAsync(stoppingToken);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+        }
+
         private async Task RefreshTargetsAsync(CancellationToken stoppingToken)
         {
-            Dictionary<Guid, RemoteStorageTargetDto> enabledTargets;
+            await _refreshLock.WaitAsync(stoppingToken);
 
             try
             {
-                enabledTargets = await _remoteStorageTargetRepository.GetEnabledAsync();
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(exception, "Failed to load remote storage settings. Keeping the current video sync targets.");
-                return;
-            }
+                Dictionary<Guid, RemoteStorageTargetDto> enabledTargets;
+                int parallelCopiesPerShare;
 
-            foreach (var worker in _workers.Values.ToList())
-            {
-                if (enabledTargets.TryGetValue(worker.Target.Id, out var storedTarget) && !HasTargetChanged(worker.Target, storedTarget))
+                try
                 {
-                    continue;
+                    enabledTargets = await _remoteStorageTargetRepository.GetEnabledAsync();
+                    parallelCopiesPerShare = Math.Max(1, (await _systemSettingsService.GetSystemSettingsAsync()).ParallelCopiesPerShare);
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, "Failed to load remote storage settings. Keeping the current video sync targets.");
+                    return;
                 }
 
-                await StopWorkerAsync(worker);
-            }
+                var hasParallelCopiesChanged = parallelCopiesPerShare != _parallelCopiesPerShare;
 
-            foreach (var target in enabledTargets.Values.Where(x => !_workers.ContainsKey(x.Id)))
+                _parallelCopiesPerShare = parallelCopiesPerShare;
+
+                foreach (var worker in _workers.Values.ToList())
+                {
+                    if (!hasParallelCopiesChanged
+                        && enabledTargets.TryGetValue(worker.Target.Id, out var storedTarget)
+                        && !HasTargetChanged(worker.Target, storedTarget))
+                    {
+                        continue;
+                    }
+
+                    await StopWorkerAsync(worker);
+                }
+
+                foreach (var target in enabledTargets.Values.Where(x => !_workers.ContainsKey(x.Id)))
+                {
+                    await StartWorkerAsync(target, stoppingToken);
+                }
+            }
+            finally
             {
-                await StartWorkerAsync(target, stoppingToken);
+                _refreshLock.Release();
             }
         }
 
@@ -132,8 +217,11 @@ namespace Homewatch.Core.BackgroundServices
                 _remoteStorageTargetRepository,
                 _smbConnectionService,
                 _storageLocationService,
+                _notificationsService,
+                _recordingRateTracker,
                 _loggerFactory.CreateLogger<RemoteStorageTargetWorker>(),
                 _retryDelay,
+                _parallelCopiesPerShare,
                 stoppingToken,
                 _videoChunkReplicationRepository);
 
@@ -150,9 +238,10 @@ namespace Homewatch.Core.BackgroundServices
                 }
 
                 _logger.LogInformation(
-                    "Started video sync to {SharePath} with {Count} pending chunks.",
+                    "Started video sync to {SharePath} with {Count} pending chunks and {ParallelCopies} parallel copies.",
                     target.SharePath,
-                    unreplicatedVideoChunks.Count);
+                    unreplicatedVideoChunks.Count,
+                    _parallelCopiesPerShare);
             }
             catch (Exception exception)
             {
@@ -166,9 +255,24 @@ namespace Homewatch.Core.BackgroundServices
         {
             await worker.StopAsync(_workerStopTimeout);
 
-            _workers.Remove(worker.Target.Id);
+            _workers.TryRemove(worker.Target.Id, out _);
 
             _logger.LogInformation("Stopped video sync to {SharePath}.", worker.Target.SharePath);
+        }
+
+        private void RecordRecordedChunk(VideoChunkReplicationItemDto item)
+        {
+            if (!_storageLocationService.TryGetCameraChunkFullPath(item.DeviceId.ToString(), item.FileName, out var chunkPath))
+            {
+                return;
+            }
+
+            var chunkFile = new FileInfo(chunkPath);
+
+            if (chunkFile.Exists)
+            {
+                _recordingRateTracker.RecordChunk(item.DeviceId, chunkFile.Length);
+            }
         }
 
         private static bool HasTargetChanged(RemoteStorageTargetDto runningTarget, RemoteStorageTargetDto storedTarget)

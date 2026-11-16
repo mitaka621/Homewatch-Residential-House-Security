@@ -20,5 +20,7 @@ namespace Homewatch.Infrastructure.Data.Entities
         public double SecurityMaxHumidityPercent { get; set; } = SystemSettingsDefaults.SecurityMaxHumidityPercent;
 
         public RetentionPeriod DismissedNotificationRetention { get; set; } = SystemSettingsDefaults.DismissedNotificationRetention;
+
+        public int ParallelCopiesPerShare { get; set; } = SystemSettingsDefaults.ParallelCopiesPerShare;
     }
 }

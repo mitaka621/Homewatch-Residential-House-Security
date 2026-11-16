@@ -1,4 +1,3 @@
-using MapsterMapper;
 using Homewatch.Contracts.Abstractions.Repositories;
 using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Dtos.DeviceDtos;
@@ -8,6 +7,7 @@ using Homewatch.Contracts.Enums;
 using Homewatch.Contracts.Exceptions;
 using Homewatch.Core.Services.Telemetry;
 using Homewatch.Core.Utilities;
+using MapsterMapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Buffers.Binary;
@@ -39,6 +39,7 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
         private readonly int _frameReadTimeoutSeconds;
         private readonly int _maxSessionDurationMinutes;
         private readonly long _maxSessionFrames;
+        private readonly int _sessionExpiryReconnectGracePeriodSeconds;
 
         public CameraSessionHandler(
             ILogger<CameraSessionHandler> logger,
@@ -71,6 +72,10 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
             _maxSessionFrames = long.Parse(
                 streamingSection["MaxSessionFrames"]
                 ?? throw new ArgumentNullException("Max session frames not configured"));
+
+            _sessionExpiryReconnectGracePeriodSeconds = int.Parse(
+                streamingSection["SessionExpiryReconnectGracePeriodSeconds"]
+                ?? throw new ArgumentNullException("Session expiry reconnect grace period not configured"));
         }
 
         public DeviceTypeCategories DeviceCategory => DeviceTypeCategories.Camera;
@@ -78,6 +83,7 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
         public async Task RunRecieveLoopAsync(ISecureChannel secureChannel, DeviceStreamingHandshakeDto device, CancellationToken cancellationToken)
         {
             var sessionToken = _activeCameraConnections.Register(device.Id, cancellationToken);
+            var isSessionExpired = false;
 
             try
             {
@@ -105,12 +111,14 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
                     if (DateTime.UtcNow >= sessionExpiresAt)
                     {
                         _logger.LogInformation("Stream {DeviceId}: session expired by time", device.Id);
+                        isSessionExpired = true;
                         return;
                     }
 
                     if (totalFrames >= (ulong)_maxSessionFrames)
                     {
                         _logger.LogInformation("Stream {DeviceId}: session expired by frame count", device.Id);
+                        isSessionExpired = true;
                         return;
                     }
 
@@ -199,12 +207,13 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
             }
             finally
             {
-                _activeCameraConnections.TryDisconnect(device.Id, sessionToken);
-
-                if (!_activeCameraConnections.IsCameraActive(device.Id))
+                if (isSessionExpired)
                 {
-                    _securityCoordinator.OnCameraDisconnected(device.Id);
-                    _cameraFramesManagerService.CloseProcessedFramesCameraChannel(device.Id);
+                    _ = DisconnectAfterReconnectGracePeriodAsync(device.Id, sessionToken);
+                }
+                else
+                {
+                    DisconnectSession(device.Id, sessionToken);
                 }
             }
         }
@@ -261,6 +270,32 @@ namespace Homewatch.Core.Services.DeviceSessionHandlers
             if (_commandChannels.TryRemove(cameraId, out var channel))
             {
                 channel.Writer.TryComplete();
+            }
+        }
+
+        //an expired session is closed by the server and the camera reconnects right away, so the disconnect waits for the new session to take over the recording
+        private async Task DisconnectAfterReconnectGracePeriodAsync(Guid cameraId, CancellationToken sessionToken)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(_sessionExpiryReconnectGracePeriodSeconds));
+
+                DisconnectSession(cameraId, sessionToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Stream {DeviceId}: delayed disconnect after session expiry failed", cameraId);
+            }
+        }
+
+        private void DisconnectSession(Guid cameraId, CancellationToken sessionToken)
+        {
+            _activeCameraConnections.TryDisconnect(cameraId, sessionToken);
+
+            if (!_activeCameraConnections.IsCameraActive(cameraId))
+            {
+                _securityCoordinator.OnCameraDisconnected(cameraId);
+                _cameraFramesManagerService.CloseProcessedFramesCameraChannel(cameraId);
             }
         }
 

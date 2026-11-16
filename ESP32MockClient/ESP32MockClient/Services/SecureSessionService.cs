@@ -19,6 +19,7 @@ public class SecureSessionService : IDisposable
     private const byte _commandResetSecurityAlarm = 1;
     private const byte _commandSaveNewConfig = 3;
 
+    private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(5);
     private readonly VideoFrameLoader _frameLoader;
 
     private TcpClient? _tcpClient;
@@ -60,12 +61,9 @@ public class SecureSessionService : IDisposable
                     _failedConnectionAttempts++;
                     EndSession();
 
-                    if (_failedConnectionAttempts >= MockClientConfiguration.MaxFailedConnectionAttempts)
-                    {
-                        break;
-                    }
+                    Console.WriteLine($"[Stream] Retrying in {_reconnectDelay.TotalSeconds:0} seconds (failed attempts: {_failedConnectionAttempts})");
 
-                    await Task.Delay(5000, ct);
+                    await Task.Delay(_reconnectDelay, ct);
                     continue;
                 }
 

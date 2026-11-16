@@ -15,5 +15,9 @@ namespace Homewatch.Contracts.Abstractions.Repositories
         Task SaveTargetAsync(RemoteStorageTargetDto target);
 
         Task UpdateTargetAsync(RemoteStorageTargetDto target);
+
+        Task SetSyncEnabledAsync(Guid targetId, bool isSyncEnabled);
+
+        Task<bool> DeleteTargetAsync(Guid targetId);
     }
 }

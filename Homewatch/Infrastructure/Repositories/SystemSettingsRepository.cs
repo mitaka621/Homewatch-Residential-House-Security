@@ -35,7 +35,8 @@ namespace Homewatch.Infrastructure.Repositories
                 SecurityMinFps = settings.SecurityMinFps,
                 SecurityMaxTemperatureC = settings.SecurityMaxTemperatureC,
                 SecurityMaxHumidityPercent = settings.SecurityMaxHumidityPercent,
-                DismissedNotificationRetention = settings.DismissedNotificationRetention
+                DismissedNotificationRetention = settings.DismissedNotificationRetention,
+                ParallelCopiesPerShare = settings.ParallelCopiesPerShare
             };
         }
 
@@ -51,7 +52,8 @@ namespace Homewatch.Infrastructure.Repositories
                     .SetProperty(x => x.SecurityMinFps, systemSettingsDto.SecurityMinFps)
                     .SetProperty(x => x.SecurityMaxTemperatureC, systemSettingsDto.SecurityMaxTemperatureC)
                     .SetProperty(x => x.SecurityMaxHumidityPercent, systemSettingsDto.SecurityMaxHumidityPercent)
-                    .SetProperty(x => x.DismissedNotificationRetention, systemSettingsDto.DismissedNotificationRetention));
+                    .SetProperty(x => x.DismissedNotificationRetention, systemSettingsDto.DismissedNotificationRetention)
+                    .SetProperty(x => x.ParallelCopiesPerShare, systemSettingsDto.ParallelCopiesPerShare));
 
             if (updated > 0)
             {
@@ -66,7 +68,8 @@ namespace Homewatch.Infrastructure.Repositories
                 SecurityMinFps = systemSettingsDto.SecurityMinFps,
                 SecurityMaxTemperatureC = systemSettingsDto.SecurityMaxTemperatureC,
                 SecurityMaxHumidityPercent = systemSettingsDto.SecurityMaxHumidityPercent,
-                DismissedNotificationRetention = systemSettingsDto.DismissedNotificationRetention
+                DismissedNotificationRetention = systemSettingsDto.DismissedNotificationRetention,
+                ParallelCopiesPerShare = systemSettingsDto.ParallelCopiesPerShare
             });
 
             return await db.SaveChangesAsync() > 0;

@@ -12,5 +12,7 @@ namespace Homewatch.Contracts.Abstractions.Services
         Task<RemoteStorageOperationResultDto> SaveTargetAsync(RemoteStorageTargetModel target);
 
         Task<RemoteStorageOperationResultDto> VerifyTargetAsync(RemoteStorageTargetModel target);
+
+        Task<RemoteStorageOperationResultDto> DeleteTargetAsync(Guid targetId);
     }
 }

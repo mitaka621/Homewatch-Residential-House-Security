@@ -14,17 +14,20 @@ namespace Homewatch.Core.Services.RemoteStorage
     {
         private readonly IRemoteStorageTargetRepository _remoteStorageTargetRepository;
         private readonly ISmbConnectionService _smbConnectionService;
+        private readonly IRemoteStorageSyncController _remoteStorageSyncController;
         private readonly ILogger<RemoteStorageTargetService> _logger;
         private readonly TimeSpan _verificationTimeout;
 
         public RemoteStorageTargetService(
             IRemoteStorageTargetRepository remoteStorageTargetRepository,
             ISmbConnectionService smbConnectionService,
+            IRemoteStorageSyncController remoteStorageSyncController,
             IConfiguration configuration,
             ILogger<RemoteStorageTargetService> logger)
         {
             _remoteStorageTargetRepository = remoteStorageTargetRepository;
             _smbConnectionService = smbConnectionService;
+            _remoteStorageSyncController = remoteStorageSyncController;
             _logger = logger;
 
             _verificationTimeout = TimeSpan.FromSeconds(int.Parse(
@@ -90,10 +93,13 @@ namespace Homewatch.Core.Services.RemoteStorage
                 if (target.Id == null)
                 {
                     await _remoteStorageTargetRepository.SaveTargetAsync(targetDto);
+                    _remoteStorageSyncController.RequestRefresh();
+
                     return CreateResult(true, "Remote storage settings saved.", targetDto.Id);
                 }
 
                 await _remoteStorageTargetRepository.UpdateTargetAsync(targetDto);
+                _remoteStorageSyncController.RequestRefresh();
 
                 return CreateResult(true, "Remote storage settings updated.", targetDto.Id);
             }
@@ -102,6 +108,29 @@ namespace Homewatch.Core.Services.RemoteStorage
                 _logger.LogError(exception, "Failed to save remote storage targets.");
 
                 return CreateResult(false, "Failed to save remote storage settings.");
+            }
+        }
+
+        public async Task<RemoteStorageOperationResultDto> DeleteTargetAsync(Guid targetId)
+        {
+            try
+            {
+                // Sync is disabled and stopped first, so no copy is still running when the share and its replication records are deleted.
+                await _remoteStorageTargetRepository.SetSyncEnabledAsync(targetId, false);
+                await _remoteStorageSyncController.StopSyncAsync(targetId);
+
+                if (!await _remoteStorageTargetRepository.DeleteTargetAsync(targetId))
+                {
+                    return CreateResult(false, "Remote storage was not found.");
+                }
+
+                return CreateResult(true, "Remote storage removed.", targetId);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Failed to remove remote storage target {TargetId}.", targetId);
+
+                return CreateResult(false, "Failed to remove remote storage.");
             }
         }
 

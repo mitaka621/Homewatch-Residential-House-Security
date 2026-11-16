@@ -15,5 +15,7 @@ namespace Homewatch.Contracts.Constants
         public const double SecurityMaxTemperatureC = 90;
 
         public const double SecurityMaxHumidityPercent = 70;
+
+        public const int ParallelCopiesPerShare = 5;
     }
 }

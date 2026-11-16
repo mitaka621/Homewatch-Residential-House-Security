@@ -1,39 +1,59 @@
 using Homewatch.Contracts.Abstractions.Repositories;
 using Homewatch.Contracts.Abstractions.Services;
+using Homewatch.Contracts.Constants;
+using Homewatch.Contracts.Dtos.NotificationDtos;
 using Homewatch.Contracts.Dtos.RemoteStorageDtos;
+using Homewatch.Contracts.Enums;
 using Homewatch.Core.Utilities;
 using Microsoft.Extensions.Logging;
+using MudBlazor;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Homewatch.Core.Services.RemoteStorage
 {
     public class RemoteStorageTargetWorker
     {
-        private const string _partialFileExtension = ".partial";
+        private const int _maximumNotificationDescriptionLength = 500;
+
+        private readonly TimeSpan _syncLoadEvaluationInterval = TimeSpan.FromMinutes(1);
+        private readonly TimeSpan _overloadNotificationDelay = TimeSpan.FromMinutes(10);
 
         private readonly Channel<VideoChunkReplicationItemDto> _channel = Channel.CreateUnbounded<VideoChunkReplicationItemDto>();
-        private readonly HashSet<string> _createdDirectories = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<Guid, byte> _queuedVideoChunkIds = new();
+        private readonly RemoteStorageSyncLoadTracker _syncLoadTracker = new();
+        private readonly object _syncLoadEvaluationLock = new();
 
         private readonly IRemoteStorageTargetRepository _remoteStorageTargetRepository;
         private readonly IVideoChunkReplicationRepository _videoChunkReplicationRepository;
         private readonly ISmbConnectionService _smbConnectionService;
         private readonly IStorageLocationService _storageLocationService;
+        private readonly INotificationsService _notificationsService;
+        private readonly VideoRecordingRateTracker _recordingRateTracker;
         private readonly ILogger<RemoteStorageTargetWorker> _logger;
         private readonly TimeSpan _retryDelay;
         private readonly TimeSpan? _retention;
+        private readonly int _parallelCopies;
         private readonly CancellationTokenSource _cancellationTokenSource;
 
         private Task _processingTask = Task.CompletedTask;
-        private ISmbShareSession? _session;
-        private bool _isFailing;
+        private int _activeChunkCount;
+        private int _isFailing;
+        private DateTime _lastSyncLoadEvaluationUtc = DateTime.UtcNow;
+        private DateTime? _overloadedSinceUtc;
+        private bool _isOverloadNotified;
 
         public RemoteStorageTargetWorker(
             RemoteStorageTargetDto target,
             IRemoteStorageTargetRepository remoteStorageTargetRepository,
             ISmbConnectionService smbConnectionService,
             IStorageLocationService storageLocationService,
+            INotificationsService notificationsService,
+            VideoRecordingRateTracker recordingRateTracker,
             ILogger<RemoteStorageTargetWorker> logger,
             TimeSpan retryDelay,
+            int parallelCopies,
             CancellationToken stoppingToken,
             IVideoChunkReplicationRepository videoChunkReplicationRepository)
         {
@@ -41,8 +61,11 @@ namespace Homewatch.Core.Services.RemoteStorage
             _remoteStorageTargetRepository = remoteStorageTargetRepository;
             _smbConnectionService = smbConnectionService;
             _storageLocationService = storageLocationService;
+            _notificationsService = notificationsService;
+            _recordingRateTracker = recordingRateTracker;
             _logger = logger;
             _retryDelay = retryDelay;
+            _parallelCopies = parallelCopies;
             _retention = target.Retention.ToTimeSpan();
             _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             _videoChunkReplicationRepository = videoChunkReplicationRepository;
@@ -52,12 +75,27 @@ namespace Homewatch.Core.Services.RemoteStorage
 
         public void Start()
         {
-            _processingTask = Task.Run(() => ProcessQueueAsync(_cancellationTokenSource.Token));
+            _processingTask = Task.WhenAll(Enumerable.Range(0, _parallelCopies)
+                .Select(_ => Task.Run(() => ProcessQueueAsync(_cancellationTokenSource.Token))));
         }
 
         public void Enqueue(VideoChunkReplicationItemDto item)
         {
-            _channel.Writer.TryWrite(item);
+            // A chunk saved while the worker starts arrives both from the pending chunks and from recording, and two parallel copies of one file collide on the share.
+            if (_queuedVideoChunkIds.TryAdd(item.VideoChunkId, 0) && !_channel.Writer.TryWrite(item))
+            {
+                _queuedVideoChunkIds.TryRemove(item.VideoChunkId, out _);
+            }
+        }
+
+        public RemoteStorageSyncStatusDto GetSyncStatus()
+        {
+            return _syncLoadTracker.GetStatus(
+                Target.Id,
+                _parallelCopies,
+                _channel.Reader.Count + Volatile.Read(ref _activeChunkCount),
+                Volatile.Read(ref _isFailing) == 1,
+                _recordingRateTracker.GetBytesPerSecond());
         }
 
         public async Task StopAsync(TimeSpan timeout)
@@ -87,13 +125,22 @@ namespace Homewatch.Core.Services.RemoteStorage
 
         private async Task ProcessQueueAsync(CancellationToken cancellationToken)
         {
+            var copySession = new RemoteStorageCopySession(_smbConnectionService, Target);
+
             try
             {
-                while (!cancellationToken.IsCancellationRequested)
+                await foreach (var replicationItem in _channel.Reader.ReadAllAsync(cancellationToken))
                 {
-                    await foreach (var replicationItem in _channel.Reader.ReadAllAsync(cancellationToken))
+                    Interlocked.Increment(ref _activeChunkCount);
+
+                    try
                     {
-                        await ReplicateVideoChunkAsync(replicationItem, cancellationToken);
+                        await ReplicateVideoChunkAsync(copySession, replicationItem, cancellationToken);
+                    }
+                    finally
+                    {
+                        _queuedVideoChunkIds.TryRemove(replicationItem.VideoChunkId, out _);
+                        Interlocked.Decrement(ref _activeChunkCount);
                     }
                 }
             }
@@ -106,11 +153,11 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                await SmbOperationRunner.RunAsync(CloseSession);
+                await SmbOperationRunner.RunAsync(copySession.Close);
             }
         }
 
-        private async Task ReplicateVideoChunkAsync(VideoChunkReplicationItemDto item, CancellationToken cancellationToken)
+        private async Task ReplicateVideoChunkAsync(RemoteStorageCopySession copySession, VideoChunkReplicationItemDto item, CancellationToken cancellationToken)
         {
             if (!_storageLocationService.TryGetCameraChunkFullPath(item.DeviceId.ToString(), item.FileName, out var localChunkPath))
             {
@@ -128,26 +175,30 @@ namespace Homewatch.Core.Services.RemoteStorage
 
                     if (!IsExpiredOnTarget(item.ChunkEndTime))
                     {
-                        await SmbOperationRunner.RunAsync(() => CopyVideoChunk(localChunkPath, item), cancellationToken);
+                        var copyStartTimestamp = Stopwatch.GetTimestamp();
+
+                        var chunkSizeInBytes = await SmbOperationRunner.RunAsync(() => copySession.CopyVideoChunk(localChunkPath, item), cancellationToken);
+
+                        _syncLoadTracker.RecordCopy(Stopwatch.GetElapsedTime(copyStartTimestamp), chunkSizeInBytes, item.ChunkEndTime);
                     }
 
                     await _videoChunkReplicationRepository.MarkVideoChunkReplicatedAsync(Target.Id, item.VideoChunkId);
 
-                    if (_isFailing)
+                    if (Interlocked.Exchange(ref _isFailing, 0) == 1)
                     {
-                        _isFailing = false;
                         _logger.LogInformation("Video sync to {SharePath} recovered.", Target.SharePath);
                     }
+
+                    await EvaluateSyncLoadIfDueAsync();
 
                     return;
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    await SmbOperationRunner.RunAsync(CloseSession);
+                    await SmbOperationRunner.RunAsync(copySession.Close);
 
-                    if (!_isFailing)
+                    if (Interlocked.Exchange(ref _isFailing, 1) == 0)
                     {
-                        _isFailing = true;
                         _logger.LogWarning(
                             exception,
                             "Copying video chunk {FileName} to {SharePath} failed. Retrying every {RetryDelay} seconds.",
@@ -161,52 +212,85 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
         }
 
-        private void CopyVideoChunk(string localChunkPath, VideoChunkReplicationItemDto item)
+        private async Task EvaluateSyncLoadIfDueAsync()
         {
-            var session = GetSession();
+            RemoteStorageSyncStatusDto syncStatus;
 
-            var dayFolderName = Path.GetFileName(Path.GetDirectoryName(localChunkPath)) ?? string.Empty;
-            var remoteDirectory = $@"{item.DeviceId}\{dayFolderName}";
-            var remoteChunkPath = $@"{remoteDirectory}\{item.FileName}";
-            var partialRemoteChunkPath = remoteChunkPath + _partialFileExtension;
-
-            if (_createdDirectories.Add(remoteDirectory))
+            lock (_syncLoadEvaluationLock)
             {
-                session.CreateDirectory(remoteDirectory);
+                var now = DateTime.UtcNow;
+
+                if (now - _lastSyncLoadEvaluationUtc < _syncLoadEvaluationInterval)
+                {
+                    return;
+                }
+
+                _lastSyncLoadEvaluationUtc = now;
+                syncStatus = GetSyncStatus();
+
+                if (syncStatus.State != RemoteStorageSyncState.Overloaded)
+                {
+                    _overloadedSinceUtc = null;
+                    _isOverloadNotified = false;
+
+                    return;
+                }
+
+                _overloadedSinceUtc ??= now;
+
+                if (_isOverloadNotified || now - _overloadedSinceUtc < _overloadNotificationDelay)
+                {
+                    return;
+                }
+
+                _isOverloadNotified = true;
             }
 
-            using (var source = new FileStream(localChunkPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
-            {
-                session.UploadFile(source, partialRemoteChunkPath);
-            }
+            _logger.LogWarning(
+                "Video sync to {SharePath} cannot keep up: cameras record {RecordingMegabytesPerSecond:0.00} megabytes per second, {UploadMegabytesPerSecond:0.00} reach the share, {PendingChunkCount} chunks waiting.",
+                Target.SharePath,
+                syncStatus.RecordingMegabytesPerSecond,
+                syncStatus.UploadMegabytesPerSecond,
+                syncStatus.PendingChunkCount);
 
-            session.RenameFile(partialRemoteChunkPath, remoteChunkPath);
+            try
+            {
+                await _notificationsService.PushNotificationToAllUsersAsync(new CreateNotificationDto
+                {
+                    Name = "Video sync cannot keep up",
+                    Description = BuildOverloadNotificationDescription(),
+                    Icon = Icons.Material.Filled.SyncProblem,
+                    IconColor = Color.Warning,
+                    IsUnique = true,
+                    NotificationType = NotificationType.System,
+                    RelativeRedirectUrl = AppRoutes.RetentionSettings
+                });
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Failed to send the video sync overload notification for {SharePath}.", Target.SharePath);
+            }
+        }
+
+        private string BuildOverloadNotificationDescription()
+        {
+            var description = DescribeOverload(Target.SharePath);
+
+            return description.Length <= _maximumNotificationDescriptionLength
+                ? description
+                : DescribeOverload("the share");
+        }
+
+        private string DescribeOverload(string shareName)
+        {
+            return $"The cameras record more video than {shareName} receives, so footage reaches it later and later. "
+                + "First check the upload speed of the server's network. If it has room to spare, raise Parallel copies per share in the Video Retention settings without using up the whole upload. "
+                + "If the network is already full, lower the resolution or quality of the cameras that record the most.";
         }
 
         private bool IsExpiredOnTarget(DateTime chunkEndTimeUtc)
         {
             return _retention != null && chunkEndTimeUtc < DateTime.UtcNow - _retention.Value;
-        }
-
-        private ISmbShareSession GetSession()
-        {
-            if (_session is { IsConnected: true })
-            {
-                return _session;
-            }
-
-            CloseSession();
-
-            _session = _smbConnectionService.OpenSession(Target);
-
-            return _session;
-        }
-
-        private void CloseSession()
-        {
-            _session?.Dispose();
-            _session = null;
-            _createdDirectories.Clear();
         }
     }
 }
