@@ -5,6 +5,15 @@
         private const string ChunkStartTimeMarker = "_=";
         private const int DayFolderNameLength = 10;
 
+        private static readonly string[] _partialFileExtensions = [".partial", ".retry.partial"];
+
+        public const string PartialFileSearchPattern = "*.partial";
+
+        public static IEnumerable<string> GetPartialChunkPaths(string chunkPath)
+        {
+            return _partialFileExtensions.Select(x => chunkPath + x);
+        }
+
         public static string GetChunkDayFolder(string fileName)
         {
             var start = fileName.IndexOf(ChunkStartTimeMarker, StringComparison.Ordinal) + ChunkStartTimeMarker.Length;

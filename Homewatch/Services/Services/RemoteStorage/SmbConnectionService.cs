@@ -51,7 +51,10 @@ namespace Homewatch.Core.Services.RemoteStorage
 
             using (var testContent = new MemoryStream(Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O"))))
             {
-                session.UploadFile(testContent, testFileName);
+                if (!session.TryUploadFile(testContent, testFileName))
+                {
+                    throw new IOException($"Creating the test file {testFileName} failed: the file is in use by another connection.");
+                }
             }
 
             session.DeleteFile(testFileName);

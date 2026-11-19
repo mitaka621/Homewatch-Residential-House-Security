@@ -29,6 +29,8 @@ namespace Homewatch.Core.Services.Devices
 
         public async Task IngestAsync(SmokeAlarmDetectorPayloadDto payload, SmokeAlarmConfigurationDto config)
         {
+            var previousTelemetry = await _smokeAlarmDetectorRepository.GetLatestTelemetryForDetectorAsync(payload.DeviceId);
+
             if (!await _smokeAlarmDetectorRepository.SavePayloadAsync(payload))
             {
                 _logger.LogError("Failed to save payload for device {DeviceId}: {Payload}", payload.DeviceId, payload);
@@ -71,6 +73,20 @@ namespace Homewatch.Core.Services.Devices
                     Description = $"The smoke alarm activated",
                     Icon = Icons.Material.Filled.LocalFireDepartment,
                     IconColor = Color.Error,
+                    IsUnique = true,
+                    NotificationType = NotificationType.EnvironmentalAlert,
+                    RelativeRedirectUrl = AppRoutes.DeviceConfig(config.DeviceId)
+                });
+            }
+
+            if (previousTelemetry?.Event == SmokeAlarmEvent.FireAlarm && payload.Event != SmokeAlarmEvent.FireAlarm)
+            {
+                _ = _notificationService.PushNotificationToAllUsersAsync(new CreateNotificationDto()
+                {
+                    Name = $"Fire alarm cleared - {config.DeviceName}",
+                    Description = "The smoke alarm stopped sounding",
+                    Icon = Icons.Material.Filled.FireExtinguisher,
+                    IconColor = Color.Success,
                     IsUnique = true,
                     NotificationType = NotificationType.EnvironmentalAlert,
                     RelativeRedirectUrl = AppRoutes.DeviceConfig(config.DeviceId)

@@ -69,11 +69,11 @@ namespace Homewatch.Core.Services.RemoteStorage
 
                 HandleNTStates(status, $"Creating folder {currentPath}");
 
-                _fileStore.CloseFile(handle);
+                TryCloseFile(handle);
             }
         }
 
-        public void UploadFile(Stream source, string relativePath)
+        public bool TryUploadFile(Stream source, string relativePath)
         {
             var sharePath = GetSharePath(relativePath);
 
@@ -87,6 +87,11 @@ namespace Homewatch.Core.Services.RemoteStorage
                 CreateDisposition.FILE_OVERWRITE_IF,
                 CreateOptions.FILE_NON_DIRECTORY_FILE | CreateOptions.FILE_SYNCHRONOUS_IO_ALERT,
                 null);
+
+            if (status == NTStatus.STATUS_SHARING_VIOLATION)
+            {
+                return false;
+            }
 
             HandleNTStates(status, $"Creating file {sharePath}");
 
@@ -112,8 +117,10 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                _fileStore.CloseFile(handle);
+                TryCloseFile(handle);
             }
+
+            return true;
         }
 
         public void RenameFile(string sourceRelativePath, string destinationRelativePath)
@@ -146,7 +153,7 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                _fileStore.CloseFile(handle);
+                TryCloseFile(handle);
             }
         }
 
@@ -201,21 +208,21 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                _fileStore.CloseFile(handle);
+                TryCloseFile(handle);
             }
         }
 
         public List<string> GetDirectoryNames(string relativePath)
         {
-            return QueryDirectory(relativePath)
+            return QueryDirectory(relativePath, "*")
                 .Where(x => (x.FileAttributes & FileAttributes.Directory) != 0)
                 .Select(x => x.FileName)
                 .ToList();
         }
 
-        public List<string> GetFileNames(string relativePath)
+        public List<string> GetFileNames(string relativePath, string searchPattern)
         {
-            return QueryDirectory(relativePath)
+            return QueryDirectory(relativePath, searchPattern)
                 .Where(x => (x.FileAttributes & FileAttributes.Directory) == 0)
                 .Select(x => x.FileName)
                 .ToList();
@@ -228,7 +235,7 @@ namespace Homewatch.Core.Services.RemoteStorage
 
         public void DeleteDirectory(string relativePath)
         {
-            foreach (var fileName in GetFileNames(relativePath))
+            foreach (var fileName in GetFileNames(relativePath, "*"))
             {
                 DeleteFile($@"{relativePath}\{fileName}");
             }
@@ -241,7 +248,7 @@ namespace Homewatch.Core.Services.RemoteStorage
             DeleteEntry(GetSharePath(relativePath), CreateOptions.FILE_DIRECTORY_FILE);
         }
 
-        private List<FileDirectoryInformation> QueryDirectory(string relativePath)
+        private List<FileDirectoryInformation> QueryDirectory(string relativePath, string searchPattern)
         {
             var sharePath = GetSharePath(relativePath);
 
@@ -265,9 +272,9 @@ namespace Homewatch.Core.Services.RemoteStorage
 
             try
             {
-                status = _fileStore.QueryDirectory(out var entries, handle, "*", FileInformationClass.FileDirectoryInformation);
+                status = _fileStore.QueryDirectory(out var entries, handle, searchPattern, FileInformationClass.FileDirectoryInformation);
 
-                if (status != NTStatus.STATUS_NO_MORE_FILES)
+                if (status is not (NTStatus.STATUS_NO_MORE_FILES or NTStatus.STATUS_NO_SUCH_FILE))
                 {
                     HandleNTStates(status, $"Listing folder {sharePath}");
                 }
@@ -279,7 +286,7 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
-                _fileStore.CloseFile(handle);
+                TryCloseFile(handle);
             }
         }
 
@@ -311,7 +318,19 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
             finally
             {
+                TryCloseFile(handle);
+            }
+        }
+
+        // Closing after a timed out request throws because the request still holds the session's credits, and that exception would hide the original error.
+        private void TryCloseFile(object handle)
+        {
+            try
+            {
                 _fileStore.CloseFile(handle);
+            }
+            catch
+            {
             }
         }
 
@@ -350,6 +369,7 @@ namespace Homewatch.Core.Services.RemoteStorage
                 NTStatus.STATUS_ACCESS_DENIED => "access denied",
                 NTStatus.STATUS_DISK_FULL => "the disk is full",
                 NTStatus.STATUS_IO_TIMEOUT => "the server did not respond in time",
+                NTStatus.STATUS_INVALID_SMB => "the connection to the server was lost",
                 _ => status.ToString()
             };
 

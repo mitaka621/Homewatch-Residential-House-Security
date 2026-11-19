@@ -223,11 +223,24 @@ namespace Homewatch.Core.BackgroundServices
 
         private void DeleteChunksFromRemoteStorage(ISmbShareSession session, List<ExpiredVideoChunkDto> chunksToDelete)
         {
-            foreach (var chunk in chunksToDelete)
+            foreach (var dayFolderChunks in chunksToDelete.GroupBy(x => $@"{x.DeviceId}\{VideoChunkStorageUtilities.GetChunkDayFolder(x.FileName)}"))
             {
-                var smbChunkFilePath = $@"{chunk.DeviceId}\{VideoChunkStorageUtilities.GetChunkDayFolder(chunk.FileName)}\{chunk.FileName}";
+                foreach (var chunk in dayFolderChunks)
+                {
+                    session.DeleteFile($@"{dayFolderChunks.Key}\{chunk.FileName}");
+                }
 
-                session.DeleteFile(smbChunkFilePath);
+                var expiredPartialFileNames = dayFolderChunks
+                    .SelectMany(x => VideoChunkStorageUtilities.GetPartialChunkPaths(x.FileName))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var partialFileName in session.GetFileNames(dayFolderChunks.Key, VideoChunkStorageUtilities.PartialFileSearchPattern))
+                {
+                    if (expiredPartialFileNames.Contains(partialFileName))
+                    {
+                        session.DeleteFile($@"{dayFolderChunks.Key}\{partialFileName}");
+                    }
+                }
             }
         }
 

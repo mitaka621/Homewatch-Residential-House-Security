@@ -19,11 +19,13 @@ namespace Homewatch.Core.Services.RemoteStorage
 
         private readonly TimeSpan _syncLoadEvaluationInterval = TimeSpan.FromMinutes(1);
         private readonly TimeSpan _overloadNotificationDelay = TimeSpan.FromMinutes(10);
+        private readonly TimeSpan _repeatedFailureLogInterval = TimeSpan.FromMinutes(10);
 
         private readonly Channel<VideoChunkReplicationItemDto> _channel = Channel.CreateUnbounded<VideoChunkReplicationItemDto>();
         private readonly ConcurrentDictionary<Guid, byte> _queuedVideoChunkIds = new();
         private readonly RemoteStorageSyncLoadTracker _syncLoadTracker = new();
         private readonly object _syncLoadEvaluationLock = new();
+        private readonly object _failureLogLock = new();
 
         private readonly IRemoteStorageTargetRepository _remoteStorageTargetRepository;
         private readonly IVideoChunkReplicationRepository _videoChunkReplicationRepository;
@@ -41,6 +43,7 @@ namespace Homewatch.Core.Services.RemoteStorage
         private int _activeChunkCount;
         private int _isFailing;
         private DateTime _lastSyncLoadEvaluationUtc = DateTime.UtcNow;
+        private DateTime _lastFailureLogUtc = DateTime.MinValue;
         private DateTime? _overloadedSinceUtc;
         private bool _isOverloadNotified;
 
@@ -197,7 +200,7 @@ namespace Homewatch.Core.Services.RemoteStorage
                 {
                     await SmbOperationRunner.RunAsync(copySession.Close);
 
-                    if (Interlocked.Exchange(ref _isFailing, 1) == 0)
+                    if (IsFailureLogDue(Interlocked.Exchange(ref _isFailing, 1) == 1))
                     {
                         _logger.LogWarning(
                             exception,
@@ -209,6 +212,23 @@ namespace Homewatch.Core.Services.RemoteStorage
 
                     await Task.Delay(_retryDelay, cancellationToken);
                 }
+            }
+        }
+
+        private bool IsFailureLogDue(bool wasAlreadyFailing)
+        {
+            lock (_failureLogLock)
+            {
+                var now = DateTime.UtcNow;
+
+                if (wasAlreadyFailing && now - _lastFailureLogUtc < _repeatedFailureLogInterval)
+                {
+                    return false;
+                }
+
+                _lastFailureLogUtc = now;
+
+                return true;
             }
         }
 

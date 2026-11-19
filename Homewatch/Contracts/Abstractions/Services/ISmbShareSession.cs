@@ -6,7 +6,7 @@ namespace Homewatch.Contracts.Abstractions.Services
 
         void CreateDirectory(string relativePath);
 
-        void UploadFile(Stream source, string relativePath);
+        bool TryUploadFile(Stream source, string relativePath);
 
         void RenameFile(string sourceRelativePath, string destinationRelativePath);
 
@@ -14,7 +14,7 @@ namespace Homewatch.Contracts.Abstractions.Services
 
         List<string> GetDirectoryNames(string relativePath);
 
-        List<string> GetFileNames(string relativePath);
+        List<string> GetFileNames(string relativePath, string searchPattern);
 
         void DeleteFile(string relativePath);
 

@@ -1,12 +1,11 @@
 using Homewatch.Contracts.Abstractions.Services;
 using Homewatch.Contracts.Dtos.RemoteStorageDtos;
+using Homewatch.Core.Utilities;
 
 namespace Homewatch.Core.Services.RemoteStorage
 {
     public class RemoteStorageCopySession
     {
-        private const string _partialFileExtension = ".partial";
-
         private readonly HashSet<string> _createdDirectories = new(StringComparer.OrdinalIgnoreCase);
         private readonly ISmbConnectionService _smbConnectionService;
         private readonly RemoteStorageTargetDto _target;
@@ -26,7 +25,6 @@ namespace Homewatch.Core.Services.RemoteStorage
             var dayFolderName = Path.GetFileName(Path.GetDirectoryName(localChunkPath)) ?? string.Empty;
             var remoteDirectory = $@"{item.DeviceId}\{dayFolderName}";
             var remoteChunkPath = $@"{remoteDirectory}\{item.FileName}";
-            var partialRemoteChunkPath = remoteChunkPath + _partialFileExtension;
 
             if (_createdDirectories.Add(remoteDirectory))
             {
@@ -34,16 +32,31 @@ namespace Homewatch.Core.Services.RemoteStorage
             }
 
             long chunkSizeInBytes;
+            string partialRemoteChunkPath;
 
             using (var source = new FileStream(localChunkPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
             {
                 chunkSizeInBytes = source.Length;
-                session.UploadFile(source, partialRemoteChunkPath);
+                partialRemoteChunkPath = UploadPartialChunk(session, source, remoteChunkPath);
             }
 
             session.RenameFile(partialRemoteChunkPath, remoteChunkPath);
 
             return chunkSizeInBytes;
+        }
+
+        // A partial file that was being written when its connection dropped stays locked on the share until the server notices the dropped connection, which can take hours.
+        private string UploadPartialChunk(ISmbShareSession session, Stream source, string remoteChunkPath)
+        {
+            foreach (var partialRemoteChunkPath in VideoChunkStorageUtilities.GetPartialChunkPaths(remoteChunkPath))
+            {
+                if (session.TryUploadFile(source, partialRemoteChunkPath))
+                {
+                    return partialRemoteChunkPath;
+                }
+            }
+
+            throw new IOException($"Uploading {remoteChunkPath} failed: all of its partial files are in use by other connections.");
         }
 
         public void Close()
